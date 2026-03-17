@@ -178,6 +178,7 @@ def run(store_config, store_path):
     log("Début injection Shopify")
     success_count = 0
     fail_count    = 0
+    total_reviews = 0
 
     for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
         product = entry["product"]
@@ -198,6 +199,7 @@ def run(store_config, store_path):
                 headers,
             )
             success_count += 1
+            total_reviews += len(entry["reviews"])
             completed_handles.append(handle)
             save_progress(store_path, idx, completed_handles)
             log(f"SUCCÈS — {handle}")
@@ -210,14 +212,15 @@ def run(store_config, store_path):
             continue
 
     # ── 8. Résumé final ──
-    log(f"Terminé | Succès: {success_count} | Échecs: {fail_count} | {cost_tracker.summary()}")
+    log(f"Terminé | Succès: {success_count} | Échecs: {fail_count} | Avis: {total_reviews} | {cost_tracker.summary()}")
     print("\n[8/8] Résumé final")
     print("=" * 60)
-    print(f"  Boutique : {store_name}")
-    print(f"  Succès   : {success_count} produit(s)")
-    print(f"  Échecs   : {fail_count} produit(s)")
-    print(f"  OpenAI   : {cost_tracker.calls} appels | ${cost_tracker.cost_usd:.4f} USD")
-    print(f"  Logs     : {LOG_FILE}")
+    print(f"  Boutique      : {store_name}")
+    print(f"  Produits OK   : {success_count}")
+    print(f"  Produits KO   : {fail_count}")
+    print(f"  Avis injectés : {total_reviews}")
+    print(f"  OpenAI        : {cost_tracker.calls} appels | ${cost_tracker.cost_usd:.4f} USD")
+    print(f"  Logs          : {LOG_FILE}")
     print("=" * 60)
 
     if fail_count == 0:

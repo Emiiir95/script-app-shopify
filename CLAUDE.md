@@ -281,6 +281,63 @@ def run(store_config: dict, store_path: str):
 2. Implémenter `run(store_config, store_path)` dans `runner.py`
 3. Ajouter l'entrée dans `FEATURES` dans `main.py`
 4. Ajouter les éventuels fichiers contexte dans `stores/_template/nom_feature/`
+5. **Créer les tests unitaires** dans `tests/test_{nom_feature}_generator.py`, `tests/test_{nom_feature}_injector.py`, etc.
+
+---
+
+## Tests unitaires
+
+### RÈGLE ABSOLUE
+
+**Toute nouvelle fonction publique doit avoir ses tests unitaires.** Les tests se trouvent dans `tests/` et utilisent `unittest` + `unittest.mock` — pas de dépendances externes.
+
+### Lancer les tests
+
+```bash
+# Utiliser le Python qui a les dépendances du projet (requests, tqdm, openai)
+/Library/Frameworks/Python.framework/Versions/3.13/bin/python3 -m unittest discover -s tests -t . -v
+```
+
+### Structure des tests
+
+```
+tests/
+├── __init__.py
+├── test_client.py       ← shopify/client.py     (21 tests)
+├── test_products.py     ← shopify/products.py   (13 tests)
+├── test_metaobjects.py  ← shopify/metaobjects.py (16 tests)
+├── test_generator.py    ← features/reviews/generator.py (13 tests)
+├── test_injector.py     ← features/reviews/injector.py  (11 tests)
+├── test_prompts.py      ← features/reviews/prompts.py   (14 tests)
+└── test_utils.py        ← utils/ (logger, cost_tracker, checkpoint) (27 tests)
+```
+
+### Ce qu'on teste
+
+- **Comportement nominal** : la fonction retourne le bon résultat avec des inputs valides
+- **Rate limiting** : 429 → sleep → retry → succès (avec parsing float du `Retry-After`)
+- **Retry réseau** : `RequestException` → retry avec backoff exponentiel
+- **Max retries** : lève l'exception après N tentatives
+- **Cas limites** : fichier absent, JSON corrompu, liste vide, valeur "TAKEN" ignorée, etc.
+
+### Règles pour écrire un test
+
+```python
+# Toujours mocker les appels réseau — jamais d'appels réels à Shopify/OpenAI
+@patch("shopify.client.requests.get")
+def test_success(self, mock_get):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"products": []}
+    mock_get.return_value = mock_resp
+
+    result = shopify_get("http://example.com", {})
+    self.assertEqual(result, {"products": []})
+```
+
+- Mocker au niveau du module qui importe (ex: `shopify.client.requests.get`, pas `requests.get`)
+- Toujours mocker `time.sleep` pour ne pas ralentir les tests de retry
+- Utiliser `tempfile.mkdtemp()` pour les tests qui écrivent des fichiers
 
 ---
 
