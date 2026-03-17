@@ -13,7 +13,10 @@ import unittest
 from io import StringIO
 from unittest.mock import MagicMock, patch
 
-from utils.checkpoint import clear_progress, load_progress, save_progress
+from utils.checkpoint import (
+    clear_progress, load_progress, save_progress,
+    save_generated_reviews, load_generated_reviews, clear_generated_reviews,
+)
 from utils.cost_tracker import PRICE_INPUT_PER_M, PRICE_OUTPUT_PER_M, CostTracker
 
 
@@ -223,6 +226,89 @@ class TestLogger(unittest.TestCase):
         from utils.logger import log
         log("une info", level="info", also_print=True)
         self.assertIn("[INFO]", mock_stdout.getvalue())
+
+
+# ── Generated reviews cache ───────────────────────────────────────────────────
+
+class TestSaveGeneratedReviews(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def _cache_path(self):
+        return os.path.join(self.tmpdir, "reviews_generated.json")
+
+    def test_creates_file(self):
+        save_generated_reviews(self.tmpdir, [{"handle": "prod-a"}])
+        self.assertTrue(os.path.exists(self._cache_path()))
+
+    def test_stores_products_data(self):
+        data = [{"handle": "prod-a", "reviews": []}]
+        save_generated_reviews(self.tmpdir, data)
+        with open(self._cache_path(), encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved["products_data"], data)
+
+    def test_stores_generated_at_timestamp(self):
+        save_generated_reviews(self.tmpdir, [])
+        with open(self._cache_path(), encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertIn("generated_at", saved)
+
+    def test_stores_store_url(self):
+        save_generated_reviews(self.tmpdir, [], store_url="mystore.myshopify.com")
+        with open(self._cache_path(), encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved["store_url"], "mystore.myshopify.com")
+
+    def test_overwrites_previous_cache(self):
+        save_generated_reviews(self.tmpdir, [{"handle": "old"}])
+        save_generated_reviews(self.tmpdir, [{"handle": "new"}])
+        with open(self._cache_path(), encoding="utf-8") as f:
+            saved = json.load(f)
+        self.assertEqual(saved["products_data"][0]["handle"], "new")
+
+
+class TestLoadGeneratedReviews(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_returns_none_when_no_file(self):
+        self.assertIsNone(load_generated_reviews(self.tmpdir))
+
+    def test_returns_saved_data(self):
+        data = [{"handle": "prod-a"}]
+        save_generated_reviews(self.tmpdir, data)
+        result = load_generated_reviews(self.tmpdir)
+        self.assertEqual(result["products_data"], data)
+
+    def test_returns_none_on_corrupt_file(self):
+        path = os.path.join(self.tmpdir, "reviews_generated.json")
+        with open(path, "w") as f:
+            f.write("not valid json {{{")
+        self.assertIsNone(load_generated_reviews(self.tmpdir))
+
+    def test_returns_none_on_empty_file(self):
+        path = os.path.join(self.tmpdir, "reviews_generated.json")
+        open(path, "w").close()
+        self.assertIsNone(load_generated_reviews(self.tmpdir))
+
+
+class TestClearGeneratedReviews(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_removes_file(self):
+        save_generated_reviews(self.tmpdir, [])
+        clear_generated_reviews(self.tmpdir)
+        self.assertFalse(os.path.exists(os.path.join(self.tmpdir, "reviews_generated.json")))
+
+    def test_no_error_when_file_does_not_exist(self):
+        clear_generated_reviews(self.tmpdir)  # ne doit pas lever d'exception
+
+    def test_load_returns_none_after_clear(self):
+        save_generated_reviews(self.tmpdir, [{"handle": "prod"}])
+        clear_generated_reviews(self.tmpdir)
+        self.assertIsNone(load_generated_reviews(self.tmpdir))
 
 
 if __name__ == "__main__":

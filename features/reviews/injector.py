@@ -51,13 +51,13 @@ def inject_product_reviews(product, reviews_data, base_url, headers):
         time.sleep(0.4)
 
     for slot_idx, gid in zip(missing_slots, metaobject_gids):
-        key = f"avis_clients_{slot_idx}"
+        key = f"avis_client_{slot_idx}"
         set_product_metafield(product_id, "custom", key, gid, "metaobject_reference", base_url, headers)
         log(f"Metafield rempli — {handle} | {key} → {gid}")
         time.sleep(0.4)
 
     set_product_metafield(
-        product_id, "custom", "note_globale_du_produit",
+        product_id, "custom", "note_globale",
         reviews_data["note_globale"], "single_line_text_field",
         base_url, headers,
     )

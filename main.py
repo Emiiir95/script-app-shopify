@@ -5,8 +5,11 @@ main.py — Point d'entrée de Shopify Automation.
 
 Flow :
   1. Sélection de la boutique (dossier dans stores/)
-  2. Sélection de la feature à lancer
-  3. Délégation au module runner de la feature avec (store_config, store_path)
+  2. Boucle de session :
+       a. Affichage du menu features
+       b. Lancement de la feature choisie
+       c. Retour au menu (même boutique, même session)
+       d. Quitter avec 'q'
 
 Lancement :
   cd /Users/.../script
@@ -25,8 +28,9 @@ ENV_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
 # Features disponibles : clé = numéro, valeur = (label, module_path ou None si pas prêt)
 FEATURES = {
-    "1": ("Reviews — Génération et injection d'avis clients", "features.reviews.runner"),
-    "2": ("Titles  — Réécriture des titres produit",          None),
+    "0": ("Setup   — Créer la structure metafields / metaobjects", "features.setup.runner"),
+    "1": ("Reviews — Génération et injection d'avis clients",      "features.reviews.runner"),
+    "2": ("Titles  — Réécriture des titres produit",               None),
 }
 
 
@@ -89,23 +93,37 @@ def select_store():
     return config, store_path
 
 
-def select_feature():
-    print("\n  Features disponibles :\n")
-    for key, (label, module_path) in FEATURES.items():
-        status = "  [bientôt disponible]" if not module_path else ""
-        print(f"  {key}. {label}{status}")
+def select_feature(store_name):
+    """
+    Affiche le menu des features et retourne le module_path choisi.
+    Retourne None si l'utilisateur choisit de quitter.
+    Boucle sur les choix invalides ou non disponibles.
+    """
+    while True:
+        print("\n" + "─" * 60)
+        print(f"  Boutique : {store_name}")
+        print("─" * 60)
+        print("\n  Features disponibles :\n")
+        for key, (label, module_path) in FEATURES.items():
+            status = "  [bientôt disponible]" if not module_path else ""
+            print(f"  {key}. {label}{status}")
+        print("\n  q. Quitter")
 
-    choice = input("\nChoisissez une feature : ").strip()
-    if choice not in FEATURES:
-        print("Choix invalide.")
-        sys.exit(1)
+        choice = input("\nChoisissez une feature (ou q) : ").strip().lower()
 
-    label, module_path = FEATURES[choice]
-    if not module_path:
-        print(f"\n[INFO] '{label.strip()}' n'est pas encore disponible.")
-        sys.exit(0)
+        if choice in ("q", "quit", "exit"):
+            return None
 
-    return module_path
+        if choice not in FEATURES:
+            print("Choix invalide — réessayez.")
+            continue
+
+        label, module_path = FEATURES[choice]
+        if not module_path:
+            print(f"\n[INFO] '{label.strip()}' n'est pas encore disponible.")
+            continue
+
+        return module_path
 
 
 def main():
@@ -120,10 +138,18 @@ def main():
 
     store_config, store_path = select_store()
     store_config["openai_key"] = openai_key
+    store_name = store_config.get("name", "boutique")
 
-    module_path = select_feature()
-    module = importlib.import_module(module_path)
-    module.run(store_config, store_path)
+    # ── Boucle de session ─────────────────────────────────────────────────────
+    while True:
+        module_path = select_feature(store_name)
+
+        if module_path is None:
+            print("\nAu revoir !\n")
+            sys.exit(0)
+
+        module = importlib.import_module(module_path)
+        module.run(store_config, store_path)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ def fetch_product_metafields(product_id, base_url, headers):
 def missing_review_slots(metafields):
     missing = []
     for i in range(1, 9):
-        if not metafields.get(f"avis_clients_{i}"):
+        if not metafields.get(f"avis_client_{i}"):
             missing.append(i)
     return missing
 

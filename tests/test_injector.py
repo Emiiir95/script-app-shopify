@@ -115,8 +115,8 @@ class TestInjectProductReviews(unittest.TestCase):
         inject_product_reviews(self.PRODUCT, self.REVIEWS_DATA, "http://base", {})
 
         set_keys = [c[0][2] for c in mock_set.call_args_list]  # 3ème arg = key
-        self.assertIn("avis_clients_1", set_keys)
-        self.assertIn("avis_clients_2", set_keys)
+        self.assertIn("avis_client_1", set_keys)
+        self.assertIn("avis_client_2", set_keys)
 
     @patch("features.reviews.injector.time.sleep")
     @patch("features.reviews.injector.set_product_metafield")
@@ -127,7 +127,7 @@ class TestInjectProductReviews(unittest.TestCase):
         inject_product_reviews(self.PRODUCT, self.REVIEWS_DATA, "http://base", {})
 
         set_keys = [c[0][2] for c in mock_set.call_args_list]
-        self.assertIn("note_globale_du_produit", set_keys)
+        self.assertIn("note_globale", set_keys)
 
     @patch("features.reviews.injector.time.sleep")
     @patch("features.reviews.injector.set_product_metafield")
