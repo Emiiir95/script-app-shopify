@@ -1,7 +1,4 @@
-import requests
-import time
-
-from shopify.client import shopify_get, shopify_post, shopify_put
+from shopify.client import shopify_get, shopify_get_paginated, shopify_post, shopify_put
 from utils.logger import log
 
 
@@ -11,11 +8,9 @@ def fetch_all_products(base_url, headers):
     params = {"limit": 250, "fields": "id,handle,title"}
 
     while url:
-        data = shopify_get(url, headers, params=params)
+        data, link_header = shopify_get_paginated(url, headers, params=params)
         batch = data.get("products", [])
         products.extend(batch)
-        resp = requests.get(url, headers=headers, params=params, timeout=30)
-        link_header = resp.headers.get("Link", "")
         url = None
         params = None
         for part in link_header.split(","):

@@ -38,6 +38,28 @@ def shopify_get(url, headers, params=None, max_retries=5):
     raise Exception(f"Échec GET après {max_retries} tentatives : {url}")
 
 
+def shopify_get_paginated(url, headers, params=None, max_retries=5):
+    """Comme shopify_get mais retourne aussi le header Link pour la pagination."""
+    for attempt in range(max_retries):
+        try:
+            resp = requests.get(url, headers=headers, params=params, timeout=30)
+            if resp.status_code == 429:
+                wait = int(float(resp.headers.get("Retry-After", 2)))
+                log(f"Rate limit Shopify GET — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            return resp.json(), resp.headers.get("Link", "")
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                log(f"Erreur réseau GET ({e}) — retry dans {wait}s", "warning")
+                time.sleep(wait)
+            else:
+                raise
+    raise Exception(f"Échec GET paginé après {max_retries} tentatives : {url}")
+
+
 def shopify_post(url, headers, payload, max_retries=5):
     for attempt in range(max_retries):
         try:

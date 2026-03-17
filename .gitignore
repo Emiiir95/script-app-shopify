@@ -1,0 +1,31 @@
+# Credentials & secrets
+.env
+stores/*/config.json
+
+# Fichiers générés à l'exécution
+stores/*/progress.json
+stores/*/reviews_preview.csv
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environnements virtuels
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
