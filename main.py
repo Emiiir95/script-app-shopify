@@ -28,9 +28,10 @@ ENV_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 
 # Features disponibles : clé = numéro, valeur = (label, module_path ou None si pas prêt)
 FEATURES = {
-    "0": ("Setup     — Créer la structure metafields / metaobjects",        "features.setup.runner"),
-    "1": ("SEO Boost — Titres, descriptions, meta title, handle produit",   "features.seo_boost.runner"),
-    "2": ("Reviews   — Génération et injection d'avis clients",             "features.reviews.runner"),
+    "0": ("Setup         — Créer la structure metafields / metaobjects",          "features.setup.runner"),
+    "1": ("SEO Boost     — Titres, descriptions, meta title, handle produit, specs",     "features.seo_boost.runner"),
+    "2": ("Reviews       — Génération et injection d'avis clients",               "features.reviews.runner"),
+    "3": ("Fiche Produit — Phrase, bénéfices, sections feature (images)",  "features.fiche_produit.runner"),
 }
 
 

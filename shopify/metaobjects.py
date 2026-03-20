@@ -163,6 +163,76 @@ def create_metafield_definition(base_url, headers, name, key, field_type, mo_def
 
 # ── Création d'instances metaobject ───────────────────────────────────────────
 
+def create_metaobject_generic(type_key, fields, base_url, headers, max_retries=5):
+    """
+    Crée un metaobject de type quelconque (générique).
+
+    Args:
+        type_key : ex "benefices_produit", "section_feature"
+        fields   : liste de dicts [{"key": ..., "value": ...}, ...]
+                   Pour les file_reference, value = GID ex "gid://shopify/MediaImage/123"
+        base_url : URL de base REST Shopify
+        headers  : dict headers HTTP
+
+    Returns:
+        str : GID de l'objet créé (ex "gid://shopify/Metaobject/456")
+    """
+    store_url   = base_url.split("/admin/api/")[0]
+    api_version = base_url.split("/admin/api/")[1]
+    graphql_url = f"{store_url}/admin/api/{api_version}/graphql.json"
+
+    query = """
+    mutation CreateMetaobject($metaobject: MetaobjectCreateInput!) {
+      metaobjectCreate(metaobject: $metaobject) {
+        metaobject { id type }
+        userErrors { field message }
+      }
+    }
+    """
+    variables = {
+        "metaobject": {
+            "type":   type_key,
+            "fields": fields,
+            "capabilities": {"publishable": {"status": "ACTIVE"}},
+        }
+    }
+
+    for attempt in range(max_retries):
+        try:
+            resp = requests.post(
+                graphql_url,
+                headers=headers,
+                json={"query": query, "variables": variables},
+                timeout=30,
+            )
+            if resp.status_code == 429:
+                wait = int(float(resp.headers.get("Retry-After", 2)))
+                log(f"Rate limit GraphQL — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
+                time.sleep(wait)
+                continue
+            resp.raise_for_status()
+            data = resp.json()
+
+            if data.get("errors"):
+                raise Exception(f"GraphQL errors : {data['errors']}")
+
+            user_errors = data.get("data", {}).get("metaobjectCreate", {}).get("userErrors", [])
+            if user_errors:
+                raise Exception(f"userErrors : {user_errors}")
+
+            gid = data["data"]["metaobjectCreate"]["metaobject"]["id"]
+            log(f"Metaobject créé — type: {type_key} | gid: {gid}")
+            return gid
+
+        except requests.exceptions.RequestException:
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+                continue
+            raise
+
+    raise Exception(f"Impossible de créer le metaobject '{type_key}' après plusieurs tentatives.")
+
+
 def create_metaobject(review, base_url, headers, max_retries=5):
     """
     Crée un metaobject 'avis_client' avec les champs texte du review.

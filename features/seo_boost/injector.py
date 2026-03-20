@@ -139,11 +139,12 @@ def inject_product_seo(product, seo_data, base_url, headers, generate_meta_desc=
       1. PUT title + handle + body_html (si generate_description et description_html non vide)
       2. SET metafield global.title_tag (meta title)
       3. SET metafield global.description_tag (meta description) — si generate_meta_desc est True
+      4. SET metafield custom.caracteristique (caractéristiques techniques HTML)
 
     Args:
-        product              : dict avec clés "id", "handle", "title"
+        product              : dict avec clés "id", "handle", "title", "body_html"
         seo_data             : dict avec clés "h1", "meta_title", "handle_nouveau",
-                               "meta_description", "description_html"
+                               "meta_description", "description_html", "caracteristique"
         base_url             : URL de base REST Shopify
         headers              : dict des headers HTTP Shopify
         generate_meta_desc   : bool — si True et meta_description non vide, injecte la meta desc
@@ -162,6 +163,7 @@ def inject_product_seo(product, seo_data, base_url, headers, generate_meta_desc=
     handle_nouveau   = seo_data.get("handle_nouveau", "")
     meta_description = seo_data.get("meta_description", "")
     description_html = seo_data.get("description_html", "")
+    caracteristique  = seo_data.get("caracteristique", "")
 
     log(f"Début injection SEO — {handle_origin} | h1: {h1!r} | handle_nouveau: {handle_nouveau!r}")
 
@@ -196,3 +198,12 @@ def inject_product_seo(product, seo_data, base_url, headers, generate_meta_desc=
             base_url, headers,
         )
         log(f"Meta description injectée — {handle_origin} | {meta_description[:60]!r}...")
+
+    # ── Étape 4 : caractéristiques techniques (custom.caracteristique) ────────
+    if caracteristique:
+        set_product_metafield(
+            product_id, "custom", "caracteristique",
+            caracteristique, "multi_line_text_field",
+            base_url, headers,
+        )
+        log(f"Caractéristiques injectées — {handle_origin}")

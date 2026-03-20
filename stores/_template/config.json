@@ -30,5 +30,12 @@
 
     "_DESC_NOTE": "true = génère la description HTML (body_html) | false = titre + handle + meta uniquement",
     "generate_description": true
+  },
+
+  "fiche_produit": {
+    "_NICHE_NOTE": "Même niche que seo_boost — utilisée dans les prompts phrase, bénéfices, titres",
+    "niche_keyword": "Votre Niche Ici",
+
+    "_REASSURANCE_NOTE": "Les points de réassurance sont dans stores/{boutique}/fiche_produit/reassurance.md"
   }
 }

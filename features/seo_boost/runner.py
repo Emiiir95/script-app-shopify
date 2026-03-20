@@ -47,6 +47,7 @@ from features.seo_boost.generator import (
     generate_description,
     generate_meta_description,
     generate_handle,
+    generate_specs,
     build_h1,
     build_meta_title,
 )
@@ -714,6 +715,10 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
                     collections=selected_collections,
                 )
 
+            # ── Caractéristiques techniques ───────────────────────────────────
+            # Générées ici car supplier_description = body_html original (avant écrasement SEO)
+            caracteristique = generate_specs(product_keyword, supplier_description, openai_client, cost_tracker)
+
             # ── Handle ────────────────────────────────────────────────────────
             handle_nouveau = generate_handle(h1)
 
@@ -727,6 +732,7 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
                     "description_html": description_html,
                     "branding_name":    branding_name,
                     "differentiator":   differentiator,
+                    "caracteristique":  caracteristique,
                 },
             })
 

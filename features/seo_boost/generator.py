@@ -19,6 +19,7 @@ Fonctions publiques :
   - generate_ai_branding_name(...)               : génère/réutilise un nom branding via GPT
   - generate_differentiator(...)                 : génère les attributs différenciants via GPT
   - generate_description(...)                    : génère la description HTML via GPT
+  - generate_specs(...)                          : génère les caractéristiques techniques HTML via GPT
 """
 
 import json
@@ -32,6 +33,7 @@ from features.seo_boost.prompts import (
     build_boost_differentiator_prompt,
     build_boost_description_prompt,
 )
+from features.fiche_produit.prompts import build_specs_prompt
 from utils.logger import log
 
 OPENAI_MODEL       = "gpt-4o"
@@ -663,6 +665,57 @@ def generate_meta_description(product_keyword, niche_keyword, supplier_descripti
                 raise Exception(f"Échec génération meta description après {max_retries} tentatives : {err}")
 
     raise Exception("Impossible de générer la meta description après plusieurs tentatives.")
+
+
+def generate_specs(product_keyword, supplier_description, openai_client, cost_tracker, max_retries=3):
+    """
+    Génère les caractéristiques techniques HTML d'un produit à partir de la description fournisseur.
+
+    Utilise gpt-4o-mini, température 0.3 (factuel).
+    Extrait uniquement <ul>...</ul> de la réponse.
+
+    Args:
+        product_keyword      : titre / mot-clé produit
+        supplier_description : description brute fournisseur (texte sans HTML)
+        openai_client        : instance OpenAI
+        cost_tracker         : instance CostTracker (gpt-4o-mini)
+
+    Returns:
+        str : balise <ul>...</ul> avec les caractéristiques, ou "" si échec
+    """
+    prompt = build_specs_prompt(product_keyword, supplier_description)
+
+    for attempt in range(max_retries):
+        try:
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.3,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            cost_tracker.add(response.usage)
+            raw = response.choices[0].message.content.strip()
+
+            # Extraire uniquement <ul>...</ul>
+            match = re.search(r"(<ul[\s\S]*?</ul>)", raw, re.IGNORECASE)
+            result = match.group(1).strip() if match else raw
+
+            log(
+                f"Specs générées — {product_keyword!r} | "
+                f"tokens: {response.usage.prompt_tokens}in/{response.usage.completion_tokens}out"
+            )
+            return result
+
+        except Exception as e:
+            log(
+                f"Erreur génération specs — {product_keyword!r} | {e} (tentative {attempt+1}/{max_retries})",
+                "error", also_print=True
+            )
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                return ""
+
+    return ""
 
 
 def generate_handle(h1_title):
