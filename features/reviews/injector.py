@@ -1,6 +1,7 @@
 import csv
 import os
 import time
+from datetime import datetime
 
 from tqdm import tqdm
 
@@ -33,6 +34,61 @@ def generate_csv_preview(products_data, store_path):
 
     log(f"CSV preview généré : {csv_path}")
     print(f"\n[CSV] Preview généré : {csv_path}")
+
+
+def generate_injection_report(injection_log, store_path):
+    """
+    Génère le rapport CSV post-injection Reviews : tout ce qui a été envoyé dans Shopify.
+
+    Colonnes :
+        date_heure, handle, note_globale, nb_avis_injectes,
+        avis1_titre … avis8_titre, avis1_texte … avis8_texte,
+        avis1_auteur … avis8_auteur, avis1_note … avis8_note,
+        statut, erreur
+
+    Args:
+        injection_log : liste de dicts { product, entry, statut, erreur }
+        store_path    : chemin absolu vers le dossier de la boutique
+
+    Returns:
+        str : chemin absolu du rapport généré
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
+    csv_path  = os.path.join(store_path, f"reviews_rapport_{timestamp}.csv")
+
+    fieldnames = ["date_heure", "handle", "note_globale", "nb_avis_injectes"]
+    for i in range(1, 9):
+        fieldnames += [f"avis{i}_titre", f"avis{i}_texte", f"avis{i}_auteur", f"avis{i}_note"]
+    fieldnames += ["statut", "erreur"]
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(csv_path, "w", newline="", encoding="utf-8-sig") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for entry in injection_log:
+            product  = entry["product"]
+            data     = entry["entry"]
+            reviews  = data.get("reviews", [])
+            row = {
+                "date_heure":        now_str,
+                "handle":            product.get("handle", ""),
+                "note_globale":      data.get("note_globale", ""),
+                "nb_avis_injectes":  len(reviews),
+                "statut":            entry["statut"],
+                "erreur":            entry.get("erreur", ""),
+            }
+            for i in range(1, 9):
+                rv = reviews[i - 1] if i <= len(reviews) else {}
+                row[f"avis{i}_titre"]  = rv.get("titre", "")
+                row[f"avis{i}_texte"]  = rv.get("texte", "")
+                row[f"avis{i}_auteur"] = rv.get("nom_auteur", "")
+                row[f"avis{i}_note"]   = rv.get("note", "")
+            writer.writerow(row)
+
+    log(f"Rapport injection Reviews généré : {csv_path}")
+    print(f"\n[RAPPORT] Injection CSV : {csv_path}")
+    return csv_path
 
 
 def inject_product_reviews(product, reviews_data, base_url, headers):

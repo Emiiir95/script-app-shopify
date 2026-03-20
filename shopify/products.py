@@ -23,6 +23,28 @@ def fetch_all_products(base_url, headers):
     return products
 
 
+def fetch_all_products_full(base_url, headers):
+    """Fetch tous les produits avec body_html et vendor (pour SEO Boost)."""
+    products = []
+    url = f"{base_url}/products.json"
+    params = {"limit": 250, "fields": "id,handle,title,body_html,vendor,tags"}
+
+    while url:
+        data, link_header = shopify_get_paginated(url, headers, params=params)
+        batch = data.get("products", [])
+        products.extend(batch)
+        url = None
+        params = None
+        for part in link_header.split(","):
+            if 'rel="next"' in part:
+                url = part.split(";")[0].strip().strip("<>")
+                break
+
+    log(f"{len(products)} produit(s) récupéré(s) avec body_html depuis Shopify")
+    print(f"[INFO] {len(products)} produit(s) récupéré(s).")
+    return products
+
+
 def fetch_product_metafields(product_id, base_url, headers):
     url = f"{base_url}/products/{product_id}/metafields.json"
     data = shopify_get(url, headers)

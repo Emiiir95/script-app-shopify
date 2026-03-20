@@ -30,14 +30,50 @@ from tqdm import tqdm
 from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
 from shopify.products import fetch_all_products, fetch_product_metafields, missing_review_slots
 from features.reviews.generator import generate_reviews_for_product, generate_global_note
-from features.reviews.injector import generate_csv_preview, inject_product_reviews
+from features.reviews.injector import generate_csv_preview, generate_injection_report, inject_product_reviews
 from features.reviews.prompts import build_system_prompt
 from utils.logger import log, LOG_FILE
-from utils.cost_tracker import CostTracker
+from utils.cost_tracker import CostTracker, estimate_cost
 from utils.checkpoint import (
     save_progress, load_progress, clear_progress,
     save_generated_reviews, load_generated_reviews, clear_generated_reviews,
 )
+
+
+REVIEWS_MODEL = "gpt-4o-mini"
+
+# Tokens moyens estimés par appel Reviews (1 appel par produit)
+_REVIEWS_INPUT_BASE    = 1500  # system prompt + contexte produit
+_REVIEWS_OUTPUT_PER_RV = 150   # ~150 tokens par avis généré
+
+
+def _print_reviews_estimate(products_to_process):
+    """Affiche l'estimation de coût OpenAI avant la génération des avis."""
+    n = len(products_to_process)
+    if n == 0:
+        return
+
+    avg_missing  = sum(len(e["missing_slots"]) for e in products_to_process) / n
+    total_calls  = n
+    total_input  = _REVIEWS_INPUT_BASE * n
+    total_output = int(_REVIEWS_OUTPUT_PER_RV * avg_missing * n)
+    cost         = estimate_cost(REVIEWS_MODEL, total_input, total_output)
+
+    print("\n" + "─" * 50)
+    print(f"  ESTIMATION COÛT OPENAI — Reviews")
+    print("─" * 50)
+    print(f"  Modèle            : {REVIEWS_MODEL}")
+    print(f"  Produits          : {n}")
+    print(f"  Avis moy/produit  : ~{avg_missing:.1f}")
+    print(f"  Appels estimés    : {total_calls} (1/produit)")
+    print(f"  Tokens entrée     : ~{total_input:,}")
+    print(f"  Tokens sortie     : ~{total_output:,}")
+    print(f"  Coût estimé       : ~${cost:.4f} USD")
+    print("─" * 50)
+    log(
+        f"Estimation Reviews — {n} produits | {total_calls} appels | "
+        f"~{total_input:,} tokens in | ~{total_output:,} tokens out | ~${cost:.4f} USD ({REVIEWS_MODEL})"
+    )
 
 
 def load_markdown_files(store_path):
@@ -88,6 +124,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     success_count = 0
     fail_count    = 0
     total_reviews = 0
+    injection_log = []
 
     for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
         product = entry["product"]
@@ -100,29 +137,32 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
         print(f"\n  → {handle} ({idx+1}/{len(all_products_data)})")
         log(f"Injection {idx+1}/{len(all_products_data)} : {handle}")
 
+        reviews_data = {
+            "note_globale":  entry["note_globale"],
+            "reviews":       entry["reviews"],
+            "missing_slots": entry["missing_slots"],
+        }
+
         try:
-            inject_product_reviews(
-                product,
-                {
-                    "note_globale":  entry["note_globale"],
-                    "reviews":       entry["reviews"],
-                    "missing_slots": entry["missing_slots"],
-                },
-                base_url,
-                headers,
-            )
+            inject_product_reviews(product, reviews_data, base_url, headers)
             success_count += 1
             total_reviews += len(entry["reviews"])
             completed_handles.append(handle)
             save_progress(store_path, idx, completed_handles)
             log(f"SUCCÈS — {handle}")
             print(f"  ✓ {handle}")
+            injection_log.append({"product": product, "entry": reviews_data, "statut": "OK"})
 
         except Exception as e:
             fail_count += 1
             log(f"ÉCHEC — {handle} | {e}", "error", also_print=True)
             print(f"  ✗ {handle} — {e}")
+            injection_log.append({"product": product, "entry": reviews_data, "statut": "ERREUR", "erreur": str(e)})
             continue
+
+    # ── Rapport post-injection ──
+    if injection_log:
+        generate_injection_report(injection_log, store_path)
 
     # ── Résumé ──
     log(f"Terminé | Succès: {success_count} | Échecs: {fail_count} | Avis: {total_reviews} | {cost_tracker.summary()}")
@@ -238,6 +278,7 @@ def run(store_config, store_path):
         sys.exit(0)
 
     print(f"\n[INFO] {len(products_to_process)} produit(s) à traiter.")
+    _print_reviews_estimate(products_to_process)
 
     # ── 5. Génération des avis ────────────────────────────────────────────────
     print("\n[5/5] Génération des avis via OpenAI...")

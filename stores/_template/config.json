@@ -1,5 +1,34 @@
 {
   "name": "Nom de la boutique",
   "store_url": "votre-boutique.myshopify.com",
-  "access_token": "shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  "access_token": "shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "seo_boost": {
+    "_NICHE_NOTE": "Mot-clé principal de la niche — ex: 'Arbre à Chat', 'Coussin Ergonomique'",
+    "niche_keyword": "Votre Niche Ici",
+
+    "_TITLE_STYLE_OPTIONS": "branded = utilise un nom branding | characteristics = niche + attributs",
+    "title_style": "branded",
+
+    "_BRANDING_MODE_OPTIONS": "theme = pioche dans brandingNames | ai = GPT génère un nom créatif par produit",
+    "_BRANDING_MODE_NOTE": "Ignoré si title_style = characteristics",
+    "branding_mode": "theme",
+
+    "_BRANDING_NAMES_NOTE": "Liste de noms pour le mode theme — ex: Atlas, Everest, Colline, Lumia",
+    "brandingNames": ["Atlas", "Everest", "Colline", "Lumia", "Skala", "Vesta", "Orion"],
+
+    "_BRANDING_POSITION_OPTIONS": "start = NomBrand – Niche Attributs | end = Niche Attributs – NomBrand",
+    "branding_position": "start",
+
+    "_VENDOR_NOTE": "Apparaît dans le meta title après le | — ex: 'Mon Texte | Vendor'",
+    "vendor": "Ma Boutique",
+
+    "_WORD_COUNT_NOTE": "Longueur minimale de la description HTML générée (en mots)",
+    "word_count": 200,
+
+    "_META_DESC_NOTE": "true = génère la meta description | false = titre + handle + description uniquement",
+    "generate_meta_description": true,
+
+    "_DESC_NOTE": "true = génère la description HTML (body_html) | false = titre + handle + meta uniquement",
+    "generate_description": true
+  }
 }

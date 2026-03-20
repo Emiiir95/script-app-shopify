@@ -1,32 +1,34 @@
-# Credentials & secrets
+# ── Secrets & credentials ──────────────────────────────────────────────────────
 .env
-stores/*/config.json
 
-# Fichiers générés à l'exécution
-stores/*/progress.json
-stores/*/reviews_preview.csv
+# ── Dossiers boutiques (tout sauf le template de référence) ────────────────────
+# Les vraies boutiques contiennent credentials, données métier, fichiers lourds
+stores/*/
+!stores/_template/
+!stores/_template/**
+
+# Logs
 logs/
 
-# Python
+# ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-.Python
 *.egg-info/
 dist/
 build/
 .eggs/
 
-# Environnements virtuels
+# ── Environnements virtuels ────────────────────────────────────────────────────
 .venv/
 venv/
 env/
-.env
 
-# IDE
+# ── OS / IDE ───────────────────────────────────────────────────────────────────
+.DS_Store
 .vscode/
 .idea/
 *.swp
 *.swo
-.DS_Store
+Thumbs.db
