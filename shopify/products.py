@@ -45,6 +45,28 @@ def fetch_all_products_full(base_url, headers):
     return products
 
 
+def fetch_all_products_with_variants(base_url, headers):
+    """Fetch tous les produits avec leurs variantes (pour Normalisation)."""
+    products = []
+    url = f"{base_url}/products.json"
+    params = {"limit": 250, "fields": "id,handle,title,status,variants"}
+
+    while url:
+        data, link_header = shopify_get_paginated(url, headers, params=params)
+        batch = data.get("products", [])
+        products.extend(batch)
+        url = None
+        params = None
+        for part in link_header.split(","):
+            if 'rel="next"' in part:
+                url = part.split(";")[0].strip().strip("<>")
+                break
+
+    log(f"{len(products)} produit(s) récupéré(s) avec variantes depuis Shopify")
+    print(f"[INFO] {len(products)} produit(s) récupéré(s).")
+    return products
+
+
 def fetch_all_products_with_images(base_url, headers):
     """Fetch tous les produits avec body_html, vendor, tags ET images (pour Fiche Produit)."""
     products = []

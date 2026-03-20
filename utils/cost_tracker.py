@@ -4,6 +4,10 @@ PRICING = {
     "gpt-4o":      {"input": 2.500, "output": 10.000},
 }
 
+# Constantes pour le modèle par défaut (gpt-4o-mini) — utilisées dans les tests
+PRICE_INPUT_PER_M  = PRICING["gpt-4o-mini"]["input"]
+PRICE_OUTPUT_PER_M = PRICING["gpt-4o-mini"]["output"]
+
 
 class CostTracker:
     def __init__(self, model="gpt-4o-mini"):
