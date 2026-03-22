@@ -158,7 +158,8 @@ def generate_injection_report(injection_log, store_path):
         str : chemin absolu du rapport généré
     """
     timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    csv_path   = os.path.join(store_path, f"normalisation_rapport_{timestamp}.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path   = os.path.join(store_path, "rapports", f"normalisation_rapport_{timestamp}.csv")
     fieldnames = [
         "date_heure", "handle", "titre_produit", "sku",
         "prix_avant", "compare_at_avant", "prix_apres",

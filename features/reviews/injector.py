@@ -11,7 +11,8 @@ from utils.logger import log
 
 def generate_csv_preview(products_data, store_path):
     """Génère le CSV preview dans le dossier de la boutique (store_path/reviews_preview.csv)."""
-    csv_path = os.path.join(store_path, "reviews_preview.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path = os.path.join(store_path, "rapports", "reviews_preview.csv")
     fieldnames = ["handle", "rating_global", "review_count"]
     for i in range(1, 9):
         fieldnames += [f"review{i}_title", f"review{i}_text", f"review{i}_author", f"review{i}_rating"]
@@ -54,7 +55,8 @@ def generate_injection_report(injection_log, store_path):
         str : chemin absolu du rapport généré
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    csv_path  = os.path.join(store_path, f"reviews_rapport_{timestamp}.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path  = os.path.join(store_path, "rapports", f"reviews_rapport_{timestamp}.csv")
 
     fieldnames = ["date_heure", "handle", "note_globale", "nb_avis_injectes"]
     for i in range(1, 9):

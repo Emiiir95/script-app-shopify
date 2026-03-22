@@ -49,7 +49,8 @@ def generate_csv_preview(products_data, store_path):
     Returns:
         str : chemin absolu du CSV généré
     """
-    csv_path   = os.path.join(store_path, "fiche_produit_preview.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path   = os.path.join(store_path, "rapports", "fiche_produit_preview.csv")
     fieldnames = [
         "handle", "titre_produit",
         "phrase",
@@ -100,7 +101,8 @@ def generate_injection_report(injection_log, store_path):
         str : chemin absolu du rapport généré
     """
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    csv_path  = os.path.join(store_path, f"fiche_produit_rapport_{timestamp}.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path  = os.path.join(store_path, "rapports", f"fiche_produit_rapport_{timestamp}.csv")
     fieldnames = [
         "date_heure", "handle", "titre_produit",
         "phrase",

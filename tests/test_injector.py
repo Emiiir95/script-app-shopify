@@ -32,12 +32,12 @@ class TestGenerateCsvPreview(unittest.TestCase):
         self.tmpdir = tempfile.mkdtemp()
 
     def _read_csv(self):
-        with open(os.path.join(self.tmpdir, "reviews_preview.csv"), encoding="utf-8") as f:
+        with open(os.path.join(self.tmpdir, "rapports", "reviews_preview.csv"), encoding="utf-8") as f:
             return list(csv.DictReader(f))
 
     def test_creates_csv_file_in_store_path(self):
         generate_csv_preview(SAMPLE_PRODUCTS_DATA, self.tmpdir)
-        self.assertTrue(os.path.exists(os.path.join(self.tmpdir, "reviews_preview.csv")))
+        self.assertTrue(os.path.exists(os.path.join(self.tmpdir, "rapports", "reviews_preview.csv")))
 
     def test_csv_has_handle_rating_count_columns(self):
         generate_csv_preview(SAMPLE_PRODUCTS_DATA, self.tmpdir)

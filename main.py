@@ -35,6 +35,7 @@ FEATURES = {
     "4": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
     "5": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
     "6": ("Collections    — Création/mise à jour collections + SEO (depuis config)",  "features.collections.runner"),
+    "7": ("Politiques     — Injection politiques légales + page retour",              "features.politiques.runner"),
 }
 
 

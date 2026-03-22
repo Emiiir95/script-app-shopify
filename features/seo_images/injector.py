@@ -155,7 +155,8 @@ def generate_injection_report(injection_log, store_path):
         str : chemin absolu du rapport
     """
     timestamp  = datetime.now().strftime("%Y-%m-%d_%H-%M")
-    csv_path   = os.path.join(store_path, f"seo_images_rapport_{timestamp}.csv")
+    os.makedirs(os.path.join(store_path, "rapports"), exist_ok=True)
+    csv_path   = os.path.join(store_path, "rapports", f"seo_images_rapport_{timestamp}.csv")
     fieldnames = [
         "date_heure", "handle", "position", "gid",
         "filename_new", "alt_new", "url_new",
