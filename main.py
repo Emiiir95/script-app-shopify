@@ -33,6 +33,7 @@ FEATURES = {
     "2": ("Reviews        — Génération et injection d'avis clients",                 "features.reviews.runner"),
     "3": ("Fiche Produit  — Phrase, bénéfices, sections feature (images)",           "features.fiche_produit.runner"),
     "4": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
+    "5": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
 }
 
 
