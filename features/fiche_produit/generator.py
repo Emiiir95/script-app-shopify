@@ -168,7 +168,16 @@ def generate_titres(product_keyword, niche_keyword, reassurance_points, supplier
         try:
             raw    = _call_openai(prompt, MODEL_SECONDARY, 0.5, openai_client, cost_tracker)
             text   = _clean_html(raw)
-            titres = [l.strip() for l in text.split('\n') if l.strip()]
+            # Nettoie : retire numérotation (1. / 2. / - / *), guillemets, lignes vides
+            import re as _re
+            titres = []
+            for l in text.split('\n'):
+                l = l.strip()
+                l = _re.sub(r'^[\d]+[\.\)]\s*', '', l)   # "1. " ou "1) "
+                l = _re.sub(r'^[-*•]\s*', '', l)          # "- " ou "* "
+                l = l.strip('"\'')
+                if l and len(l) > 3:
+                    titres.append(l)
 
             if len(titres) >= 2:
                 best = [titres[0], titres[1]]

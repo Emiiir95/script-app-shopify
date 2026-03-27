@@ -30,9 +30,9 @@ ENV_FILE   = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
 FEATURES = {
     "0": ("Setup          — Créer la structure metafields / metaobjects",            "features.setup.runner"),
     "1": ("SEO Boost      — Titres, descriptions, meta title, handle produit, specs","features.seo_boost.runner"),
-    "2": ("Reviews        — Génération et injection d'avis clients",                 "features.reviews.runner"),
-    "3": ("Fiche Produit  — Phrase, bénéfices, sections feature (images)",           "features.fiche_produit.runner"),
-    "4": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
+    "2": ("Fiche Produit  — Phrase, bénéfices, sections feature (images)",           "features.fiche_produit.runner"),
+    "3": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
+    "4": ("Reviews        — Génération et injection d'avis clients",                 "features.reviews.runner"),
     "5": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
     "6": ("Collections    — Création/mise à jour collections + SEO (depuis config)",  "features.collections.runner"),
     "7": ("Politiques     — Injection politiques légales + page retour",              "features.politiques.runner"),

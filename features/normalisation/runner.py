@@ -32,11 +32,14 @@ from features.normalisation.injector import (
     compute_variant_changes,
     normalize_product,
     generate_injection_report,
+    fetch_color_pattern_map,
+    create_color_pattern_metaobject,
+    find_taxonomy_category_gid,
 )
 from utils.logger import log, LOG_FILE
 
 
-def _print_summary(products):
+def _print_summary(products, vendor):
     """
     Affiche le résumé des changements détectés avant confirmation.
     """
@@ -44,22 +47,24 @@ def _print_summary(products):
     price_corrections   = 0
     status_corrections  = 0
     field_corrections   = 0
+    vendor_corrections  = 0
 
     for product in products:
         if product.get("status") != "active":
             status_corrections += 1
+        if product.get("vendor", "") != vendor:
+            vendor_corrections += 1
         for variant in product.get("variants", []):
             total_variants += 1
             changes = compute_variant_changes(variant)
             if changes["changed"]:
-                # Distinguer correction de prix vs champs
                 price_str   = variant.get("price") or "0"
                 compare_str = variant.get("compare_at_price") or "0"
                 try:
                     if float(compare_str) > float(price_str):
                         price_corrections += 1
                     elif float(compare_str) != 0.0:
-                        price_corrections += 1  # compare_at à vider
+                        price_corrections += 1
                 except (ValueError, TypeError):
                     pass
                 field_corrections += 1
@@ -67,11 +72,12 @@ def _print_summary(products):
     print("\n" + "─" * 50)
     print("  ANALYSE — Normalisation Produit")
     print("─" * 50)
-    print(f"  Produits           : {len(products)}")
-    print(f"  Variantes          : {total_variants}")
-    print(f"  Status à corriger  : {status_corrections}")
+    print(f"  Produits               : {len(products)}")
+    print(f"  Variantes              : {total_variants}")
+    print(f"  Vendor à corriger      : {vendor_corrections}  → {vendor!r}")
+    print(f"  Status à corriger      : {status_corrections}")
     print(f"  Variantes à normaliser : {field_corrections}")
-    print(f"  Corrections prix   : {price_corrections}")
+    print(f"  Corrections prix       : {price_corrections}")
     print("─" * 50)
 
 
@@ -103,17 +109,37 @@ def run(store_config, store_path):
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)
         sys.exit(1)
 
+    vendor            = store_name
+    norm_config       = store_config.get("normalisation", {})
+    category_name     = norm_config.get("product_category_name") or None
+    category_search   = norm_config.get("product_category_search") or category_name
+    category_gid      = None
+
+    if category_search:
+        print(f"\n  → Résolution catégorie Shopify : {category_name or category_search!r}...")
+        category_gid = find_taxonomy_category_gid(category_search, base_url, headers)
+        if category_gid:
+            print(f"  → GID résolu : {category_gid}")
+            log(f"Catégorie résolue : {category_search!r} → {category_gid}")
+        else:
+            log(f"Catégorie introuvable dans la taxonomie Shopify : {category_search!r}", "warning", also_print=True)
+
     # ── Résumé + confirmation ─────────────────────────────────────────────────
-    _print_summary(products)
+    _print_summary(products, vendor)
 
     print("\n[2/3] Règles qui seront appliquées :")
-    print("  • price         = max(price, compare_at_price)")
-    print("  • compare_at    = null")
-    print("  • taxable       = false")
-    print("  • inventory_policy = deny")
+    print("  • price               = max(price, compare_at_price)")
+    print("  • compare_at          = null")
+    print("  • taxable             = false")
+    print("  • inventory_policy    = deny")
     print("  • fulfillment_service = manual")
     print("  • requires_shipping   = true")
     print("  • status              = active")
+    print(f"  • vendor              = {vendor!r}")
+    if category_name:
+        if category_name:
+            status = "GID résolu" if category_gid else "❌ non trouvée"
+            print(f"  • catégorie           = {category_name!r}  ({status})")
 
     print("\n" + "=" * 60)
     answer = input("Lancer la normalisation ? (yes/no) : ").strip().lower()
@@ -126,6 +152,43 @@ def run(store_config, store_path):
     print("\n[3/3] Normalisation en cours...")
     log("Début normalisation Shopify")
 
+    # Charge la map couleur une seule fois si des produits ont l'option "Couleur"
+    has_couleur = any(
+        any(opt.get("name", "").strip().lower() == "couleur" for opt in p.get("options", []))
+        for p in products
+    )
+    color_map = {}
+    if has_couleur:
+        print("  → Chargement des couleurs Shopify (shopify--ct-color-pattern)...")
+        color_map = fetch_color_pattern_map(base_url, headers)
+
+        # Collecter toutes les couleurs des variantes { lowercase: nom_original }
+        variant_colors = {}
+        for p in products:
+            pos = next((o.get("position") for o in p.get("options", [])
+                        if o.get("name", "").strip().lower() == "couleur"), None)
+            if pos:
+                for v in p.get("variants", []):
+                    c = v.get(f"option{pos}", "").strip()
+                    if c:
+                        variant_colors.setdefault(c.lower(), c)
+
+        missing = set(variant_colors) - set(color_map)
+        print(f"  → {len(color_map)} couleur(s) existante(s) | "
+              f"{len(variant_colors) - len(missing)}/{len(variant_colors)} couvertes")
+
+        # Créer les metaobjects manquants
+        if missing:
+            print(f"  → Création de {len(missing)} couleur(s) manquante(s)...")
+            for key in sorted(missing):
+                original_name = variant_colors[key]
+                try:
+                    new_gid = create_color_pattern_metaobject(original_name, base_url, headers)
+                    color_map[key] = new_gid
+                    print(f"    ✓ {original_name!r}")
+                except Exception as e:
+                    log(f"Couleur {original_name!r} — création impossible : {e}", "warning", also_print=True)
+
     success_count  = 0
     fail_count     = 0
     injection_log  = []
@@ -135,7 +198,7 @@ def run(store_config, store_path):
         log(f"Normalisation — {handle}")
 
         try:
-            variant_results = normalize_product(product, base_url, headers)
+            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map)
             success_count += 1
             for vr in variant_results:
                 injection_log.append({**vr, "statut": "OK", "erreur": ""})

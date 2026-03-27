@@ -40,6 +40,12 @@
     "_REASSURANCE_NOTE": "Les points de réassurance sont dans stores/{boutique}/fiche_produit/reassurance.md"
   },
 
+  "normalisation": {
+    "_CATEGORY_NOTE": "name = nom affiché (fr), search = terme anglais pour l'API Shopify taxonomy",
+    "product_category_name": null,
+    "product_category_search": null
+  },
+
   "legal_info": {
     "_NOTE": "Utilisé par la feature Politiques — rempli une seule fois par boutique",
 

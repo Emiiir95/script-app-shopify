@@ -49,7 +49,7 @@ def fetch_all_products_with_variants(base_url, headers):
     """Fetch tous les produits avec leurs variantes (pour Normalisation)."""
     products = []
     url = f"{base_url}/products.json"
-    params = {"limit": 250, "fields": "id,handle,title,status,variants"}
+    params = {"limit": 250, "fields": "id,handle,title,status,variants,options"}
 
     while url:
         data, link_header = shopify_get_paginated(url, headers, params=params)

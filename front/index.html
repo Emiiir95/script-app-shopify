@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopify Automation — Dashboard</title>
+<style>
+  :root {
+    --bg:        #0D0D1A;
+    --surface:   #14142A;
+    --card:      #1C1C35;
+    --border:    #2A2A4A;
+    --accent:    #7C6FFF;
+    --accent2:   #00D4FF;
+    --success:   #00C896;
+    --warning:   #FFB347;
+    --danger:    #FF4757;
+    --text:      #E8E8F5;
+    --muted:     #7070A0;
+    --sidebar-w: 240px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* ── SIDEBAR ─────────────────────────────────── */
+  .sidebar {
+    width: var(--sidebar-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+
+  .sidebar-logo {
+    padding: 20px 18px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .sidebar-logo .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .sidebar-logo span { font-weight: 700; font-size: 14px; line-height: 1.2; }
+  .sidebar-logo small { color: var(--muted); font-size: 10px; display: block; }
+
+  .store-selector {
+    margin: 12px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: border-color .2s;
+    position: relative;
+  }
+  .store-selector:hover { border-color: var(--accent); }
+  .store-selector .store-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 4px; }
+  .store-selector .store-name { font-size: 13px; font-weight: 600; }
+  .store-selector .chevron { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 12px; }
+
+  .store-dropdown {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 10px; right: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+  .store-dropdown.open { display: block; }
+  .store-dropdown-item {
+    padding: 10px 14px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .store-dropdown-item:hover { background: var(--border); }
+  .store-dropdown-item.active { color: var(--accent); }
+  .store-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+  .nav-section { padding: 8px 10px 4px; }
+  .nav-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; padding: 0 8px; margin-bottom: 4px; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--muted);
+    transition: all .15s;
+    margin-bottom: 2px;
+    position: relative;
+  }
+  .nav-item:hover { background: var(--card); color: var(--text); }
+  .nav-item.active { background: rgba(124,111,255,.15); color: var(--accent); }
+  .nav-item .nav-icon { width: 18px; text-align: center; font-size: 15px; }
+  .nav-badge {
+    margin-left: auto;
+    background: var(--accent);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 12px 10px;
+    border-top: 1px solid var(--border);
+  }
+  .sidebar-footer .nav-item { color: var(--muted); }
+
+  /* ── MAIN ───────────────────────────────────── */
+  .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  .topbar {
+    height: 56px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 24px;
+    gap: 12px;
+    background: var(--surface);
+    flex-shrink: 0;
+  }
+  .breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+  .breadcrumb span { color: var(--muted); }
+  .breadcrumb strong { color: var(--text); }
+  .breadcrumb .sep { color: var(--border); }
+
+  .topbar-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 6px var(--success); }
+
+  .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+  /* ── PAGE PANELS ────────────────────────────── */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .page-header { margin-bottom: 24px; }
+  .page-header h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .page-header p { color: var(--muted); font-size: 13px; }
+
+  /* ── CARDS ──────────────────────────────────── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .card-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 16px; }
+
+  .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+  }
+  .stat-card .stat-val { font-size: 28px; font-weight: 700; line-height: 1; margin-bottom: 4px; }
+  .stat-card .stat-lbl { font-size: 11px; color: var(--muted); }
+  .stat-card.accent .stat-val { color: var(--accent); }
+  .stat-card.success .stat-val { color: var(--success); }
+  .stat-card.warning .stat-val { color: var(--warning); }
+  .stat-card.danger  .stat-val { color: var(--danger); }
+
+  /* ── BUTTONS ────────────────────────────────── */
+  .btn {
+    padding: 9px 18px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    transition: all .15s;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-primary { background: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #9080FF; transform: translateY(-1px); }
+  .btn-secondary { background: var(--border); color: var(--text); }
+  .btn-secondary:hover { background: #3A3A5A; }
+  .btn-danger { background: rgba(255,71,87,.15); color: var(--danger); border: 1px solid var(--danger); }
+  .btn-danger:hover { background: rgba(255,71,87,.3); }
+  .btn-success { background: var(--success); color: #000; }
+  .btn-success:hover { background: #00E6AA; }
+  .btn:disabled { opacity: .4; cursor: not-allowed; transform: none !important; }
+
+  /* ── TABLE ──────────────────────────────────── */
+  .table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: rgba(255,255,255,.03); padding: 10px 14px; text-align: left; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  /* ── BADGES ─────────────────────────────────── */
+  .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 8px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge-success { background: rgba(0,200,150,.15); color: var(--success); }
+  .badge-warning { background: rgba(255,179,71,.15); color: var(--warning); }
+  .badge-danger  { background: rgba(255,71,87,.15); color: var(--danger); }
+  .badge-info    { background: rgba(0,212,255,.15); color: var(--accent2); }
+  .badge-neutral { background: rgba(112,112,160,.15); color: var(--muted); }
+  .badge-accent  { background: rgba(124,111,255,.15); color: var(--accent); }
+
+  /* ── PROGRESS ───────────────────────────────── */
+  .progress-bar {
+    height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;
+    margin: 8px 0;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px;
+    transition: width .3s ease;
+  }
+
+  /* ── LOG TERMINAL ───────────────────────────── */
+  .terminal {
+    background: #08081A;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+    max-height: 240px;
+    overflow-y: auto;
+    line-height: 1.7;
+  }
+  .log-line { display: flex; gap: 10px; }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-info  { color: var(--accent2); }
+  .log-ok    { color: var(--success); }
+  .log-warn  { color: var(--warning); }
+  .log-error { color: var(--danger); }
+
+  /* ── TOAST ──────────────────────────────────── */
+  .toasts { position: fixed; bottom: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+    animation: slideIn .2s ease;
+    max-width: 320px;
+  }
+  .toast-success { border-left: 3px solid var(--success); }
+  .toast-error   { border-left: 3px solid var(--danger); }
+  .toast-info    { border-left: 3px solid var(--accent); }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
+
+  /* ── MODAL ──────────────────────────────────── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 500;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    width: 480px;
+    max-width: 90vw;
+    box-shadow: 0 20px 60px rgba(0,0,0,.7);
+  }
+  .modal h3 { font-size: 17px; margin-bottom: 8px; }
+  .modal p { color: var(--muted); font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* ── DIFF BLOCK ─────────────────────────────── */
+  .diff-block { display: flex; flex-direction: column; gap: 2px; }
+  .diff-before { color: var(--danger); font-size: 12px; text-decoration: line-through; opacity: .6; }
+  .diff-after  { color: var(--success); font-size: 12px; font-weight: 600; }
+  .diff-same   { color: var(--muted); font-size: 12px; }
+
+  /* ── RULE LIST ──────────────────────────────── */
+  .rule-list { display: flex; flex-direction: column; gap: 6px; }
+  .rule-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 12px;
+    background: rgba(255,255,255,.02);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .rule-item code { background: var(--border); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-family: monospace; }
+  .rule-arrow { color: var(--accent); font-size: 11px; }
+
+  /* ── FEATURE GRID ───────────────────────────── */
+  .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all .2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .feature-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    opacity: 0; transition: opacity .2s;
+  }
+  .feature-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: 0 8px 24px rgba(124,111,255,.15); }
+  .feature-card:hover::before { opacity: 1; }
+  .feature-card .fc-icon { font-size: 28px; margin-bottom: 12px; }
+  .feature-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+  .feature-card p  { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .feature-card .fc-badge { margin-top: 12px; }
+
+  /* ── REVIEW CARD ────────────────────────────── */
+  .review-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .review-stars { color: #FFD700; font-size: 13px; margin-bottom: 6px; }
+  .review-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .review-body  { font-size: 12px; color: var(--muted); line-height: 1.6; margin-bottom: 8px; }
+  .review-author { font-size: 11px; color: var(--accent); }
+
+  /* ── COLOR SWATCH ───────────────────────────── */
+  .color-swatch {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px;
+  }
+  .swatch { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(255,255,255,.2); }
+
+  /* ── SEO SCORE ──────────────────────────────── */
+  .seo-score {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    border: 2px solid;
+  }
+  .seo-score.good  { border-color: var(--success); color: var(--success); }
+  .seo-score.ok    { border-color: var(--warning); color: var(--warning); }
+  .seo-score.bad   { border-color: var(--danger);  color: var(--danger); }
+
+  /* ── MISC ───────────────────────────────────── */
+  .divider { height: 1px; background: var(--border); margin: 16px 0; }
+  .flex { display: flex; align-items: center; }
+  .gap-8  { gap: 8px; }
+  .gap-12 { gap: 12px; }
+  .ml-auto { margin-left: auto; }
+  .text-muted { color: var(--muted); font-size: 12px; }
+  .mt-16 { margin-top: 16px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .three-col { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  .empty-state {
+    text-align: center; padding: 48px 24px; color: var(--muted);
+  }
+  .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+  .empty-state p { font-size: 13px; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 20px;
+    font-size: 11px;
+    background: var(--border); color: var(--muted);
+  }
+  .chip.active { background: rgba(124,111,255,.2); color: var(--accent); }
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .phase-indicator {
+    display: flex; gap: 0; margin-bottom: 20px;
+  }
+  .phase-step {
+    flex: 1; text-align: center; font-size: 11px;
+    padding: 8px 4px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--muted); position: relative;
+  }
+  .phase-step:first-child { border-radius: 8px 0 0 8px; }
+  .phase-step:last-child  { border-radius: 0 8px 8px 0; }
+  .phase-step.done  { background: rgba(0,200,150,.1); border-color: var(--success); color: var(--success); }
+  .phase-step.active { background: rgba(124,111,255,.15); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+
+  .input {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px;
+    color: var(--text); font-size: 13px; width: 100%;
+    outline: none; transition: border-color .15s;
+  }
+  .input:focus { border-color: var(--accent); }
+
+  select.input { cursor: pointer; }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <span>ShopFlow</span>
+      <small>Automation v2.6</small>
+    </div>
+  </div>
+
+  <div style="position:relative">
+    <div class="store-selector" onclick="toggleStoreDropdown()">
+      <div class="store-label">Boutique active</div>
+      <div class="store-name" id="currentStoreName">Le Perchoir Du Chat</div>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="store-dropdown" id="storeDropdown">
+      <div class="store-dropdown-item active" onclick="selectStore('perchoir','Le Perchoir Du Chat','#00C896')">
+        <span class="store-dot" style="background:#00C896"></span>Le Perchoir Du Chat
+      </div>
+      <div class="store-dropdown-item" onclick="selectStore('veilleuse','Atelier Veilleuse','#7C6FFF')">
+        <span class="store-dot" style="background:#7C6FFF"></span>Atelier Veilleuse
+      </div>
+      <div class="store-dropdown-item" onclick="selectStore('add','+ Ajouter une boutique','#666')">
+        <span class="store-dot" style="background:#444"></span>+ Ajouter une boutique
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Aperçu</div>
+    <div class="nav-item active" onclick="navigate('dashboard')" id="nav-dashboard">
+      <span class="nav-icon">◈</span>Dashboard
+    </div>
+    <div class="nav-item" onclick="navigate('logs')" id="nav-logs">
+      <span class="nav-icon">▤</span>Logs
+    </div>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-label">Features</div>
+    <div class="nav-item" onclick="navigate('normalisation')" id="nav-normalisation">
+      <span class="nav-icon">⬡</span>Normalisation
+    </div>
+    <div class="nav-item" onclick="navigate('seo')" id="nav-seo">
+      <span class="nav-icon">◎</span>SEO Boost
+    </div>
+    <div class="nav-item" onclick="navigate('fiche')" id="nav-fiche">
+      <span class="nav-icon">❑</span>Fiche Produit
+    </div>
+    <div class="nav-item" onclick="navigate('reviews')" id="nav-reviews">
+      <span class="nav-icon">✦</span>Avis Clients <span class="nav-badge">8</span>
+    </div>
+    <div class="nav-item" onclick="navigate('collections')" id="nav-collections">
+      <span class="nav-icon">⊞</span>Collections
+    </div>
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="nav-item" onclick="navigate('settings')" id="nav-settings">
+      <span class="nav-icon">⚙</span>Paramètres
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <span id="breadcrumb-store">Le Perchoir Du Chat</span>
+      <span class="sep">›</span>
+      <strong id="breadcrumb-page">Dashboard</strong>
+    </div>
+    <div class="topbar-actions">
+      <div class="status-dot"></div>
+      <span style="font-size:12px;color:var(--muted)">API connectée</span>
+      <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="showToast('Logs copiés dans le presse-papier','info')">📋 Logs</button>
+    </div>
+  </div>
+
+  <div class="content">
+
+    <!-- ══ PAGE : DASHBOARD ═══════════════════════════════════════════ -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <h1>Tableau de bord</h1>
+        <p>Vue d'ensemble de la boutique <strong>Le Perchoir Du Chat</strong></p>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card accent"><div class="stat-val">120</div><div class="stat-lbl">Produits</div></div>
+        <div class="stat-card success"><div class="stat-val">116</div><div class="stat-lbl">Actifs</div></div>
+        <div class="stat-card warning"><div class="stat-val">8</div><div class="stat-lbl">Avis manquants</div></div>
+        <div class="stat-card danger"><div class="stat-val">4</div><div class="stat-lbl">Erreurs SEO</div></div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card" onclick="navigate('normalisation')">
+          <div class="fc-icon">⬡</div>
+          <h3>Normalisation</h3>
+          <p>Prix, statut, vendor, catégorie taxonomique et couleurs synchronisés.</p>
+          <div class="fc-badge"><span class="badge badge-success">✓ À jour</span></div>
+        </div>
+        <div class="feature-card" onclick="navigate('seo')">
+          <div class="fc-icon">◎</div>
+          <h3>SEO Boost</h3>
+          <p>Réécriture IA des titres, meta descriptions et descriptions HTML.</p>
+          <div class="fc-badge"><span class="badge badge-warning">4 à traiter</span></div>
+        </div>
+        <div class="feature-card" onclick="navigate('fiche')">
+          <div class="fc-icon">❑</div>
+          <h3>Fiche Produit</h3>
+          <p>Génération de fiches produits enrichies avec bénéfices et réassurance.</p>
+          <div class="fc-badge"><span class="badge badge-neutral">120 produits</span></div>
+        </div>
+        <div class="feature-card" onclick="navigate('reviews')">
+          <div class="fc-icon">✦</div>
+          <h3>Avis Clients</h3>
+          <p>Génération et injection d'avis clients IA dans les metafields Shopify.</p>
+          <div class="fc-badge"><span class="badge badge-danger">8 manquants</span></div>
+        </div>
+        <div class="feature-card" onclick="navigate('collections')">
+          <div class="fc-icon">⊞</div>
+          <h3>Collections</h3>
+          <p>Génération des descriptions SEO de chaque collection par niche.</p>
+          <div class="fc-badge"><span class="badge badge-info">16 collections</span></div>
+        </div>
+        <div class="feature-card" onclick="navigate('settings')">
+          <div class="fc-icon">⚙</div>
+          <h3>Configuration</h3>
+          <p>Credentials Shopify, clé OpenAI, catégorie taxonomique, niche SEO.</p>
+          <div class="fc-badge"><span class="badge badge-neutral">config.json</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : NORMALISATION ══════════════════════════════════════ -->
+    <div class="page" id="page-normalisation">
+      <div class="page-header">
+        <h1>⬡ Normalisation Produit</h1>
+        <p>Normalise les prix, statut, vendor, catégorie taxonomique et liaisons couleur.</p>
+      </div>
+
+      <div id="norm-phase-idle">
+        <div class="phase-indicator">
+          <div class="phase-step active">① Analyse</div>
+          <div class="phase-step">② Confirmation</div>
+          <div class="phase-step">③ Injection</div>
+          <div class="phase-step">④ Rapport</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Règles appliquées</div>
+          <div class="rule-list">
+            <div class="rule-item"><span>💰</span> <code>price</code> <span class="rule-arrow">→</span> max(price, compare_at_price)</div>
+            <div class="rule-item"><span>🚫</span> <code>compare_at_price</code> <span class="rule-arrow">→</span> null (toujours vidé)</div>
+            <div class="rule-item"><span>💳</span> <code>taxable</code> <span class="rule-arrow">→</span> false</div>
+            <div class="rule-item"><span>📦</span> <code>inventory_policy</code> <span class="rule-arrow">→</span> deny</div>
+            <div class="rule-item"><span>🚚</span> <code>fulfillment_service</code> <span class="rule-arrow">→</span> manual</div>
+            <div class="rule-item"><span>✅</span> <code>status</code> <span class="rule-arrow">→</span> active</div>
+            <div class="rule-item"><span>🏷️</span> <code>vendor</code> <span class="rule-arrow">→</span> "Le Perchoir Du Chat"</div>
+            <div class="rule-item"><span>🗂️</span> <code>category</code> <span class="rule-arrow">→</span> Cat Trees & Towers (TaxonomyCategory)</div>
+            <div class="rule-item"><span>🎨</span> <code>shopify.color-pattern</code> <span class="rule-arrow">→</span> lié au metaobject couleur via productOptionUpdate</div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="normAnalyze()">
+          <span class="spinner" id="norm-spinner" style="display:none"></span>
+          <span id="norm-btn-text">🔍 Analyser les produits</span>
+        </button>
+      </div>
+
+      <div id="norm-phase-confirm" style="display:none">
+        <div class="phase-indicator">
+          <div class="phase-step done">① Analyse ✓</div>
+          <div class="phase-step active">② Confirmation</div>
+          <div class="phase-step">③ Injection</div>
+          <div class="phase-step">④ Rapport</div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-val" style="color:var(--text)">120</div><div class="stat-lbl">Produits</div></div>
+          <div class="stat-card warning"><div class="stat-val">0</div><div class="stat-lbl">Status à corriger</div></div>
+          <div class="stat-card accent"><div class="stat-val">116</div><div class="stat-lbl">Couleurs à lier</div></div>
+          <div class="stat-card success"><div class="stat-val">120</div><div class="stat-lbl">Catégories à définir</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Aperçu des changements (5 premiers)</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produit</th><th>Prix avant</th><th>Prix après</th><th>Couleur</th><th>Catégorie</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td>Arbre à Chat XXL Hamac Bois Beige</td><td class="diff-before">€499.99 / €599.99</td><td><span class="badge badge-success">€599.99</span></td><td><span class="color-swatch"><span class="swatch" style="background:#EAD8AB"></span>Beige</span></td><td><span class="badge badge-accent">Cat Trees</span></td><td><span class="badge badge-success">active</span></td></tr>
+                <tr><td>Arbre à Chat Design Gris Clair</td><td class="diff-same">€299.99</td><td><span class="badge badge-neutral">€299.99</span></td><td><span class="color-swatch"><span class="swatch" style="background:#C0C0C0"></span>Gris clair</span></td><td><span class="badge badge-accent">Cat Trees</span></td><td><span class="badge badge-success">active</span></td></tr>
+                <tr><td>Arbre à Chat Maine Coon Noir</td><td class="diff-before">€349.99 / €449.99</td><td><span class="badge badge-success">€449.99</span></td><td><span class="color-swatch"><span class="swatch" style="background:#000"></span>Noir</span></td><td><span class="badge badge-accent">Cat Trees</span></td><td><span class="badge badge-success">active</span></td></tr>
+                <tr><td>Arbre à Chat Mural Blanc Vert</td><td class="diff-same">€189.99</td><td><span class="badge badge-neutral">€189.99</span></td><td><span class="color-swatch"><span class="swatch" style="background:#05AA3D"></span>Vert</span></td><td><span class="badge badge-accent">Cat Trees</span></td><td><span class="badge badge-success">active</span></td></tr>
+                <tr><td>Arbre à Chat Cactus Rose</td><td class="diff-before">€149.99 / €199.99</td><td><span class="badge badge-success">€199.99</span></td><td><span class="color-swatch"><span class="swatch" style="background:#FFC0CB"></span>Rose</span></td><td><span class="badge badge-accent">Cat Trees</span></td><td><span class="badge badge-success">active</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-primary" onclick="normRun()">🚀 Lancer la normalisation</button>
+          <button class="btn btn-secondary" onclick="normReset()">← Annuler</button>
+        </div>
+      </div>
+
+      <div id="norm-phase-running" style="display:none">
+        <div class="phase-indicator">
+          <div class="phase-step done">① Analyse ✓</div>
+          <div class="phase-step done">② Confirmation ✓</div>
+          <div class="phase-step active">③ Injection</div>
+          <div class="phase-step">④ Rapport</div>
+        </div>
+        <div class="card">
+          <div class="flex gap-12 mb" style="margin-bottom:12px">
+            <div class="spinner"></div>
+            <span style="font-size:14px;font-weight:600">Normalisation en cours...</span>
+            <span class="ml-auto text-muted" id="norm-progress-text">0 / 120</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="norm-progress-bar" style="width:0%"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Log en direct</div>
+          <div class="terminal" id="norm-terminal"></div>
+        </div>
+      </div>
+
+      <div id="norm-phase-done" style="display:none">
+        <div class="phase-indicator">
+          <div class="phase-step done">① Analyse ✓</div>
+          <div class="phase-step done">② Confirmation ✓</div>
+          <div class="phase-step done">③ Injection ✓</div>
+          <div class="phase-step active">④ Rapport ✓</div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card success"><div class="stat-val">118</div><div class="stat-lbl">Produits OK</div></div>
+          <div class="stat-card danger"><div class="stat-val">2</div><div class="stat-lbl">Erreurs</div></div>
+          <div class="stat-card accent"><div class="stat-val">116</div><div class="stat-lbl">Couleurs liées</div></div>
+          <div class="stat-card success"><div class="stat-val">120</div><div class="stat-lbl">Catégories définies</div></div>
+        </div>
+        <div class="card">
+          <div class="card-title">Erreurs détectées (2)</div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produit</th><th>Erreur</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td>arbre-a-chat-tour-marron-bois</td><td><span class="badge badge-danger">productOptionUpdate — ALREADY_LINKED</span></td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Réessayer</button></td></tr>
+                <tr><td>arbre-a-chat-hamac-violet</td><td><span class="badge badge-danger">Rate limit 429 — retry épuisé</span></td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Réessayer</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-success" onclick="showToast('Rapport CSV téléchargé','success')">⬇ Télécharger rapport CSV</button>
+          <button class="btn btn-secondary" onclick="normReset()">↺ Nouvelle normalisation</button>
+        </div>
+      </div>
+
+      <div id="norm-phase-error" style="display:none">
+        <div class="card" style="border-color:var(--danger)">
+          <div class="card-title" style="color:var(--danger)">Erreur critique</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px" id="norm-error-msg">Connexion Shopify impossible.</p>
+          <button class="btn btn-secondary" onclick="normReset()">↺ Réessayer</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : SEO BOOST ══════════════════════════════════════════ -->
+    <div class="page" id="page-seo">
+      <div class="page-header">
+        <h1>◎ SEO Boost</h1>
+        <p>Réécriture IA des titres, meta descriptions et descriptions HTML via GPT-4o-mini.</p>
+      </div>
+
+      <div id="seo-phase-idle">
+        <div class="two-col" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-title">Configuration</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Niche keyword</div>
+                <input class="input" value="Arbre à Chat" readonly>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Style de titre</div>
+                <select class="input"><option>branded (NomBrand – Niche)</option><option>characteristics</option></select>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--muted);margin-bottom:4px">Position branding</div>
+                <select class="input"><option>end (Niche – NomBrand)</option><option>start</option></select>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">À générer</div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                <input type="checkbox" checked> Titres produits
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                <input type="checkbox" checked> Meta descriptions
+              </label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+                <input type="checkbox" checked> Descriptions HTML
+              </label>
+              <div class="divider"></div>
+              <div style="font-size:12px;color:var(--muted)">Coût estimé : <strong style="color:var(--warning)">~$2.40</strong></div>
+              <div style="font-size:12px;color:var(--muted)">Produits : <strong>120</strong> (4 non traités)</div>
+            </div>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="seoAnalyze()">🔍 Analyser et générer le preview</button>
+      </div>
+
+      <div id="seo-phase-preview" style="display:none">
+        <div class="card">
+          <div class="flex gap-8" style="margin-bottom:12px">
+            <div class="card-title" style="margin:0">Preview — 4 produits à traiter</div>
+            <div class="ml-auto flex gap-8">
+              <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="showToast('Preview CSV exporté','success')">⬇ Exporter CSV</button>
+              <button class="btn btn-primary" onclick="seoRun()">🚀 Injecter</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produit</th><th>Titre avant</th><th>Titre après</th><th>Score SEO</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">arbre-a-chat-fleur-rose</td>
+                  <td style="max-width:180px"><span style="font-size:12px;color:var(--muted)">Arbre à Chat Fleur Rose</span></td>
+                  <td style="max-width:200px">
+                    <div class="diff-block">
+                      <div class="diff-before">Arbre à Chat Fleur Rose</div>
+                      <div class="diff-after">Arbre à Chat Fleur Rose Grande — Perchoir</div>
+                    </div>
+                  </td>
+                  <td><div class="seo-score good">92</div></td>
+                </tr>
+                <tr>
+                  <td>arbre-a-chat-mural-bois</td>
+                  <td><span style="font-size:12px;color:var(--muted)">Arbre à Chat Mural</span></td>
+                  <td>
+                    <div class="diff-block">
+                      <div class="diff-before">Arbre à Chat Mural</div>
+                      <div class="diff-after">Arbre à Chat Mural Bois Naturel — Sommet</div>
+                    </div>
+                  </td>
+                  <td><div class="seo-score good">88</div></td>
+                </tr>
+                <tr>
+                  <td>arbre-a-chat-cactus-gris</td>
+                  <td><span style="font-size:12px;color:var(--muted)">Cactus Chat Gris</span></td>
+                  <td>
+                    <div class="diff-block">
+                      <div class="diff-before">Cactus Chat Gris</div>
+                      <div class="diff-after">Arbre à Chat Cactus Gris Design — Cairn</div>
+                    </div>
+                  </td>
+                  <td><div class="seo-score ok">71</div></td>
+                </tr>
+                <tr>
+                  <td>tunnel-chat-beige</td>
+                  <td><span style="font-size:12px;color:var(--muted)">Tunnel pour chat</span></td>
+                  <td>
+                    <div class="diff-block">
+                      <div class="diff-before">Tunnel pour chat</div>
+                      <div class="diff-after">Arbre à Chat Tunnel Beige Pliable — Nid</div>
+                    </div>
+                  </td>
+                  <td><div class="seo-score bad">54</div></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="flex gap-8">
+          <button class="btn btn-primary" onclick="seoRun()">🚀 Injecter dans Shopify</button>
+          <button class="btn btn-secondary" onclick="seoReset()">← Retour</button>
+        </div>
+      </div>
+
+      <div id="seo-phase-running" style="display:none">
+        <div class="card">
+          <div class="flex gap-12" style="margin-bottom:12px">
+            <div class="spinner"></div>
+            <span style="font-size:14px;font-weight:600">SEO Boost en cours...</span>
+            <span class="ml-auto text-muted" id="seo-progress-text">0 / 4</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="seo-progress-bar" style="width:0%"></div></div>
+          <div class="terminal" id="seo-terminal" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div id="seo-phase-done" style="display:none">
+        <div class="stats-row">
+          <div class="stat-card success"><div class="stat-val">4</div><div class="stat-lbl">Produits traités</div></div>
+          <div class="stat-card accent"><div class="stat-val">4</div><div class="stat-lbl">Titres mis à jour</div></div>
+          <div class="stat-card success"><div class="stat-val">4</div><div class="stat-lbl">Meta générées</div></div>
+          <div class="stat-card warning"><div class="stat-val">$0.08</div><div class="stat-lbl">Coût OpenAI</div></div>
+        </div>
+        <div class="flex gap-8 mt-16">
+          <button class="btn btn-success" onclick="showToast('Rapport exporté','success')">⬇ Rapport CSV</button>
+          <button class="btn btn-secondary" onclick="seoReset()">↺ Nouveau SEO Boost</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : FICHE PRODUIT ══════════════════════════════════════ -->
+    <div class="page" id="page-fiche">
+      <div class="page-header">
+        <h1>❑ Fiche Produit</h1>
+        <p>Génération de fiches produits enrichies avec bénéfices et points de réassurance.</p>
+      </div>
+
+      <div class="two-col">
+        <div>
+          <div class="card">
+            <div class="card-title">Sélection</div>
+            <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="radio" name="fiche-scope" checked> Tous les produits (120)</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="radio" name="fiche-scope"> Seulement sans description</label>
+              <label style="display:flex;align-items:center;gap:8px;font-size:13px"><input type="radio" name="fiche-scope"> Sélection manuelle</label>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Coût estimé : <strong style="color:var(--warning)">~$18.00</strong> (120 produits × $0.15)</div>
+            <button class="btn btn-primary" onclick="ficheGenerate()">⚡ Générer les fiches</button>
+          </div>
+          <div class="card">
+            <div class="card-title">Réassurance (reassurance.md)</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div class="chip active">✓ Livraison 3-8j</div>
+              <div class="chip active">✓ Retours 30 jours</div>
+              <div class="chip active">✓ Paiement sécurisé</div>
+              <div class="chip active">✓ Service client 7j/7</div>
+              <div class="chip active">✓ Garantie 2 ans</div>
+            </div>
+          </div>
+        </div>
+        <div class="card" id="fiche-preview-card">
+          <div class="card-title">Aperçu — Arbre à Chat XXL Hamac Bois Beige</div>
+          <div style="font-size:12px;line-height:1.7;color:var(--muted)">
+            <p style="color:var(--text);margin-bottom:8px">🐱 <strong>Offrez à votre compagnon le confort qu'il mérite</strong></p>
+            <p>Cet arbre à chat XXL en bois massif avec hamac est la solution idéale pour les propriétaires de chats qui souhaitent offrir un espace de jeu, de repos et d'observation à leur félin.</p>
+            <br>
+            <p><strong>✨ Bénéfices clés :</strong></p>
+            <ul style="padding-left:16px;margin-top:4px">
+              <li>Structure XXL — parfait pour les grands chats et Maine Coons</li>
+              <li>Bois naturel anti-griffure recouvert de sisal</li>
+              <li>Hamac douillet lavable en machine</li>
+              <li>Montage facile en 15 minutes</li>
+            </ul>
+            <br>
+            <div style="background:rgba(124,111,255,.08);border-radius:8px;padding:10px;border:1px solid rgba(124,111,255,.2)">
+              🚚 Livraison rapide 3-8j &nbsp;|&nbsp; ↩ Retours gratuits &nbsp;|&nbsp; 🔒 Paiement sécurisé
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="fiche-phase-running" style="display:none;margin-top:16px">
+        <div class="card">
+          <div class="flex gap-12" style="margin-bottom:12px">
+            <div class="spinner"></div>
+            <span style="font-size:14px;font-weight:600">Génération en cours...</span>
+            <span class="ml-auto text-muted" id="fiche-progress-text">0 / 120</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="fiche-progress-bar" style="width:0%"></div></div>
+          <div class="terminal" id="fiche-terminal" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : AVIS CLIENTS ═══════════════════════════════════════ -->
+    <div class="page" id="page-reviews">
+      <div class="page-header">
+        <h1>✦ Avis Clients</h1>
+        <p>Génération et injection d'avis via GPT-4o-mini dans les metafields Shopify.</p>
+      </div>
+
+      <div id="reviews-phase-idle">
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-val" style="color:var(--text)">112</div><div class="stat-lbl">Produits complets (8/8)</div></div>
+          <div class="stat-card danger"><div class="stat-val">8</div><div class="stat-lbl">Avis manquants</div></div>
+          <div class="stat-card warning"><div class="stat-val">3</div><div class="stat-lbl">Partiels (&lt;8)</div></div>
+          <div class="stat-card warning"><div class="stat-val">$0.24</div><div class="stat-lbl">Coût estimé</div></div>
+        </div>
+        <div class="card">
+          <div class="flex gap-8" style="margin-bottom:12px">
+            <div class="card-title" style="margin:0">Produits avec avis manquants</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produit</th><th>Avis actuels</th><th>À générer</th><th>Note cible</th></tr></thead>
+              <tbody>
+                <tr><td>Arbre à Chat Fleur Blanc Niché</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.7</td></tr>
+                <tr><td>Arbre à Chat Cactus Vert Cairn</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.8</td></tr>
+                <tr><td>Tour Chat Maine Coon Dolomite</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.9</td></tr>
+                <tr><td>Arbre Chat Design Violet Atlas</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.6</td></tr>
+                <tr><td>Arbre Chat Hamac Beige Plateau</td><td><span class="badge badge-warning">3 / 8</span></td><td>5</td><td>⭐ 4.8</td></tr>
+                <tr><td>Arbre Chat Bois Gris Perchoir</td><td><span class="badge badge-warning">6 / 8</span></td><td>2</td><td>⭐ 4.7</td></tr>
+                <tr><td>Griffoir Sisal Rond Marron</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.8</td></tr>
+                <tr><td>Niche Chat Igloo Rose Tendre</td><td><span class="badge badge-danger">0 / 8</span></td><td>8</td><td>⭐ 4.9</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="reviewsGenerate()">⚡ Générer les avis</button>
+      </div>
+
+      <div id="reviews-phase-preview" style="display:none">
+        <div class="flex gap-8" style="margin-bottom:16px">
+          <h3 style="font-size:15px">Preview — Arbre à Chat Fleur Blanc</h3>
+          <div class="ml-auto flex gap-8">
+            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="showToast('CSV exporté','success')">⬇ CSV Preview</button>
+            <button class="btn btn-primary" onclick="reviewsInject()">🚀 Injecter</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="review-card">
+            <div class="review-stars">★★★★★</div>
+            <div class="review-title">Mon chat adore son nouvel arbre !</div>
+            <div class="review-body">Livraison rapide, montage en 20 min. Ma chatte Luna ne le quitte plus. La qualité du bois est vraiment au rendez-vous.</div>
+            <div class="review-author">Sophie M. — il y a 3 semaines</div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">★★★★★</div>
+            <div class="review-title">Parfait pour mon Maine Coon</div>
+            <div class="review-body">Solide, beau design, mon Théodore (7kg) grimpe dessus sans problème. Le hamac est bien fixé et confortable.</div>
+            <div class="review-author">Alexandre T. — il y a 1 mois</div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">★★★★☆</div>
+            <div class="review-title">Très bon rapport qualité-prix</div>
+            <div class="review-body">Je recommande ! Seul bémol : une petite égratignure sur un poteau, mais le SAV a été super réactif.</div>
+            <div class="review-author">Marie-Hélène G. — il y a 2 semaines</div>
+          </div>
+          <div class="review-card">
+            <div class="review-stars">★★★★★</div>
+            <div class="review-title">Magnifique et solide</div>
+            <div class="review-body">Commande reçue en 4 jours, bien emballée. Le design fleur est vraiment original et s'intègre parfaitement dans le salon.</div>
+            <div class="review-author">Julie K. — il y a 5 jours</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary" style="margin-top:16px" onclick="reviewsReset()">← Retour</button>
+      </div>
+
+      <div id="reviews-phase-running" style="display:none">
+        <div class="card">
+          <div class="flex gap-12" style="margin-bottom:12px">
+            <div class="spinner"></div>
+            <span style="font-size:14px;font-weight:600">Injection en cours...</span>
+            <span class="ml-auto text-muted" id="reviews-progress-text">0 / 8</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" id="reviews-progress-bar" style="width:0%"></div></div>
+          <div class="terminal" id="reviews-terminal" style="margin-top:12px"></div>
+        </div>
+      </div>
+
+      <div id="reviews-phase-done" style="display:none">
+        <div class="stats-row">
+          <div class="stat-card success"><div class="stat-val">8</div><div class="stat-lbl">Produits traités</div></div>
+          <div class="stat-card accent"><div class="stat-val">51</div><div class="stat-lbl">Avis injectés</div></div>
+          <div class="stat-card success"><div class="stat-val">8</div><div class="stat-lbl">Notes globales</div></div>
+          <div class="stat-card warning"><div class="stat-val">$0.21</div><div class="stat-lbl">Coût réel</div></div>
+        </div>
+        <button class="btn btn-secondary mt-16" onclick="reviewsReset()">↺ Vérifier de nouveaux manquants</button>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : COLLECTIONS ════════════════════════════════════════ -->
+    <div class="page" id="page-collections">
+      <div class="page-header">
+        <h1>⊞ Collections</h1>
+        <p>Génération des descriptions SEO et gestion des règles par collection.</p>
+      </div>
+      <div class="card">
+        <div class="flex gap-8" style="margin-bottom:12px">
+          <div class="card-title" style="margin:0">16 collections configurées</div>
+          <button class="btn btn-primary ml-auto" onclick="collectionsGenerate()">⚡ Générer toutes les descriptions</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Collection</th><th>Catégorie</th><th>Volume SEO</th><th>Description</th><th>Produits</th><th>Action</th></tr></thead>
+            <tbody>
+              <tr><td>Arbre à Chat</td><td><span class="badge badge-accent">principale</span></td><td>74 000</td><td><span class="badge badge-success">✓ Générée</span></td><td>120</td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="showToast('Description copiée','info')">Voir</button></td></tr>
+              <tr><td>Arbre à Chat Maine Coon</td><td><span class="badge badge-info">type</span></td><td>4 400</td><td><span class="badge badge-warning">À générer</span></td><td>18</td><td><button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="showToast('Génération en cours…','info')">Générer</button></td></tr>
+              <tr><td>Arbre à Chat Design</td><td><span class="badge badge-info">type</span></td><td>3 600</td><td><span class="badge badge-warning">À générer</span></td><td>22</td><td><button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="showToast('Génération en cours…','info')">Générer</button></td></tr>
+              <tr><td>Arbre à Chat Mural</td><td><span class="badge badge-info">type</span></td><td>2 900</td><td><span class="badge badge-success">✓ Générée</span></td><td>15</td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Voir</button></td></tr>
+              <tr><td>Arbre à Chat Beige</td><td><span class="badge badge-neutral">variation</span></td><td>1 000</td><td><span class="badge badge-warning">À générer</span></td><td>31</td><td><button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="showToast('Génération en cours…','info')">Générer</button></td></tr>
+              <tr><td>Arbre à Chat Noir</td><td><span class="badge badge-neutral">variation</span></td><td>390</td><td><span class="badge badge-success">✓ Générée</span></td><td>24</td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Voir</button></td></tr>
+              <tr><td>Arbre à Chat XXL</td><td><span class="badge badge-neutral">variation</span></td><td>1 900</td><td><span class="badge badge-success">✓ Générée</span></td><td>28</td><td><button class="btn btn-secondary" style="padding:4px 10px;font-size:11px">Voir</button></td></tr>
+              <tr><td>Petit Arbre à Chat</td><td><span class="badge badge-neutral">variation</span></td><td>1 300</td><td><span class="badge badge-warning">À générer</span></td><td>19</td><td><button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="showToast('Génération en cours…','info')">Générer</button></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : LOGS ═══════════════════════════════════════════════ -->
+    <div class="page" id="page-logs">
+      <div class="page-header">
+        <h1>▤ Logs</h1>
+        <p>Historique complet des opérations — <code style="font-size:11px">logs/app.log</code></p>
+      </div>
+      <div class="flex gap-8" style="margin-bottom:12px">
+        <select class="input" style="width:auto"><option>Tous niveaux</option><option>INFO</option><option>WARNING</option><option>ERROR</option></select>
+        <input class="input" placeholder="Filtrer…" style="flex:1" oninput="filterLogs(this.value)">
+        <button class="btn btn-secondary" onclick="showToast('Logs copiés','info')">📋 Copier</button>
+      </div>
+      <div class="terminal" style="max-height:600px" id="logs-terminal">
+        <div class="log-line"><span class="log-time">13:57:12</span><span class="log-ok">INFO</span><span>Terminé Normalisation | Succès: 118 | Échecs: 2</span></div>
+        <div class="log-line"><span class="log-time">13:57:12</span><span class="log-ok">INFO</span><span>Rapport normalisation généré : stores/perchoir-du-chat/rapports/normalisation_rapport_2026-03-24.csv</span></div>
+        <div class="log-line"><span class="log-time">13:57:11</span><span class="log-ok">INFO</span><span>Option Couleur liée — arbre-a-chat-xxl-hamac-design-bois-gris-fonce-stromboli</span></div>
+        <div class="log-line"><span class="log-time">13:57:11</span><span class="log-ok">INFO</span><span>Variante normalisée — arbre-a-chat-xxl-hamac-design-bois-gris-fonce | SKU: '14:175' | prix 209.99 → 209.99</span></div>
+        <div class="log-line"><span class="log-time">13:57:10</span><span class="log-warn">WARNING</span><span>Couleur 'Multicolore' non trouvée dans color_map</span></div>
+        <div class="log-line"><span class="log-time">13:57:09</span><span class="log-error">ERROR</span><span>ÉCHEC — arbre-a-chat-tour-marron-bois | productOptionUpdate — ALREADY_LINKED</span></div>
+        <div class="log-line"><span class="log-time">13:57:08</span><span class="log-ok">INFO</span><span>Catégorie définie — arbre-a-chat-xxl-193cm-hamac-bois | gid://shopify/TaxonomyCategory/ap-2-2-2-5</span></div>
+        <div class="log-line"><span class="log-time">13:57:07</span><span class="log-ok">INFO</span><span>Color pattern map chargé — 11 entrée(s)</span></div>
+        <div class="log-line"><span class="log-time">13:57:06</span><span class="log-ok">INFO</span><span>Catégorie résolue : 'Cat Trees & Towers' → gid://shopify/TaxonomyCategory/ap-2-2-2-5</span></div>
+        <div class="log-line"><span class="log-time">13:57:05</span><span class="log-ok">INFO</span><span>Démarrage feature Normalisation — boutique : Le Perchoir Du Chat</span></div>
+        <div class="log-line"><span class="log-time">13:57:05</span><span class="log-ok">INFO</span><span>120 produit(s) récupéré(s) avec variantes depuis Shopify</span></div>
+        <div class="log-line"><span class="log-time">13:22:41</span><span class="log-ok">INFO</span><span>Terminé SEO Boost | Succès: 4 | Échecs: 0 | Coût: $0.08</span></div>
+        <div class="log-line"><span class="log-time">13:22:40</span><span class="log-ok">INFO</span><span>SEO injecté — tunnel-chat-beige | title OK | meta OK | body OK</span></div>
+        <div class="log-line"><span class="log-time">13:22:38</span><span class="log-warn">WARNING</span><span>Description trop courte (142 mots) pour arbre-a-chat-cactus-gris — min: 200</span></div>
+      </div>
+    </div>
+
+    <!-- ══ PAGE : SETTINGS ═══════════════════════════════════════════ -->
+    <div class="page" id="page-settings">
+      <div class="page-header">
+        <h1>⚙ Paramètres</h1>
+        <p>Configuration de la boutique active — <code style="font-size:11px">stores/perchoir-du-chat/config.json</code></p>
+      </div>
+      <div class="two-col">
+        <div>
+          <div class="card">
+            <div class="card-title">Shopify</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Store URL</div><input class="input" value="5r2rfg-iv.myshopify.com" readonly></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Access Token</div><input class="input" value="shpat_••••••••••••••••••••••••" readonly></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Version API</div><input class="input" value="2026-01" readonly></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">SEO Boost</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Niche keyword</div><input class="input" value="Arbre à Chat"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Vendor</div><input class="input" value="Le Perchoir Du Chat"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Longueur description (mots)</div><input class="input" type="number" value="200"></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <div class="card">
+            <div class="card-title">Normalisation</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Catégorie (affiché)</div><input class="input" value="Arbres à chat et tours"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Catégorie (recherche API)</div><input class="input" value="Cat Trees & Towers"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Informations légales</div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Entreprise</div><input class="input" value="Le Perchoir Du Chat"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">Email</div><input class="input" value="contact@le-perchoir-du-chat.com"></div>
+              <div><div style="font-size:11px;color:var(--muted);margin-bottom:4px">SIRET</div><input class="input" value="983 251 810 00013"></div>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="showToast('Paramètres sauvegardés (simulation)','success')">💾 Sauvegarder</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- TOASTS -->
+<div class="toasts" id="toasts"></div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h3 id="modal-title">Confirmation</h3>
+    <p id="modal-body"></p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal()">Annuler</button>
+      <button class="btn btn-primary" id="modal-confirm">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══ STATE ══════════════════════════════════════════════════
+let activeStore = 'perchoir';
+let activePage  = 'dashboard';
+
+const pageNames = {
+  dashboard: 'Dashboard', normalisation: 'Normalisation',
+  seo: 'SEO Boost', fiche: 'Fiche Produit',
+  reviews: 'Avis Clients', collections: 'Collections',
+  logs: 'Logs', settings: 'Paramètres',
+};
+
+// ══ NAVIGATION ══════════════════════════════════════════════
+function navigate(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page)?.classList.add('active');
+  document.getElementById('nav-' + page)?.classList.add('active');
+  document.getElementById('breadcrumb-page').textContent = pageNames[page] || page;
+  activePage = page;
+}
+
+function toggleStoreDropdown() {
+  document.getElementById('storeDropdown').classList.toggle('open');
+}
+
+function selectStore(id, name, color) {
+  if (id === 'add') { showToast('Copiez _template/ dans stores/ pour ajouter une boutique','info'); }
+  else {
+    document.getElementById('currentStoreName').textContent = name;
+    document.getElementById('breadcrumb-store').textContent = name;
+    showToast('Boutique : ' + name, 'success');
+  }
+  document.getElementById('storeDropdown').classList.remove('open');
+}
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.store-selector') && !e.target.closest('.store-dropdown'))
+    document.getElementById('storeDropdown').classList.remove('open');
+});
+
+// ══ TOASTS ══════════════════════════════════════════════════
+function showToast(msg, type='info') {
+  const icons = { success:'✓', error:'✗', info:'ℹ' };
+  const t = document.createElement('div');
+  t.className = `toast toast-${type}`;
+  t.innerHTML = `<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ══ MODAL ═══════════════════════════════════════════════════
+let modalCb = null;
+function openModal(title, body, cb) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-body').textContent = body;
+  document.getElementById('modal').classList.add('open');
+  document.getElementById('modal-confirm').onclick = () => { closeModal(); cb && cb(); };
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+// ══ TERMINAL HELPERS ════════════════════════════════════════
+function addLog(termId, msg, type='info') {
+  const term = document.getElementById(termId);
+  if (!term) return;
+  const now = new Date();
+  const t = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const div = document.createElement('div');
+  div.className = 'log-line';
+  div.innerHTML = `<span class="log-time">${t}</span><span class="log-${type}">${msg}</span>`;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+// ══ NORMALISATION ════════════════════════════════════════════
+function normAnalyze() {
+  const btn = document.getElementById('norm-btn-text');
+  const spinner = document.getElementById('norm-spinner');
+  btn.textContent = 'Analyse…'; spinner.style.display = 'inline-block';
+  setTimeout(() => {
+    spinner.style.display = 'none'; btn.textContent = '🔍 Analyser les produits';
+    document.getElementById('norm-phase-idle').style.display = 'none';
+    document.getElementById('norm-phase-confirm').style.display = 'block';
+    showToast('Analyse terminée — 120 produits détectés','success');
+  }, 1800);
+}
+
+function normReset() {
+  ['confirm','running','done','error'].forEach(p =>
+    document.getElementById('norm-phase-'+p).style.display = 'none');
+  document.getElementById('norm-phase-idle').style.display = 'block';
+  document.getElementById('norm-terminal').innerHTML = '';
+}
+
+function normRun() {
+  document.getElementById('norm-phase-confirm').style.display = 'none';
+  document.getElementById('norm-phase-running').style.display = 'block';
+
+  const products = [
+    'arbre-a-chat-xxl-hamac-bois-beige','arbre-a-chat-design-gris-clair','arbre-a-chat-maine-coon-noir',
+    'arbre-a-chat-mural-blanc-vert','arbre-a-chat-cactus-rose','arbre-a-chat-fleur-violet',
+    'arbre-a-chat-hamac-beige-taniere','tour-chat-maine-coon-gris','arbre-a-chat-xxl-marron',
+    'arbre-a-chat-design-bleu-marine','griffoir-sisal-beige','niche-chat-rose',
+    'arbre-a-chat-tour-marron-bois','arbre-a-chat-hamac-violet','...120 produits au total'
+  ];
+  const errors = ['arbre-a-chat-tour-marron-bois','arbre-a-chat-hamac-violet'];
+  let i = 0; const total = 120;
+
+  const logs = [
+    ['info','120 produit(s) récupéré(s) depuis Shopify'],
+    ['info','Color pattern map chargé — 11 entrée(s)'],
+    ['info',"Catégorie résolue : 'Cat Trees & Towers' → gid://shopify/TaxonomyCategory/ap-2-2-2-5"],
+  ];
+  logs.forEach(([t, m]) => addLog('norm-terminal', m, t));
+
+  function step() {
+    if (i >= total) {
+      document.getElementById('norm-phase-running').style.display = 'none';
+      document.getElementById('norm-phase-done').style.display = 'block';
+      addLog('norm-terminal','Terminé | Succès: 118 | Échecs: 2','ok');
+      showToast('Normalisation terminée — 118 OK, 2 erreurs','success');
+      return;
+    }
+    i++;
+    const pct = Math.round(i / total * 100);
+    document.getElementById('norm-progress-bar').style.width = pct + '%';
+    document.getElementById('norm-progress-text').textContent = i + ' / ' + total;
+
+    const handle = products[Math.min(i-1, products.length-1)];
+    const isErr = errors.includes(handle);
+    if (i <= 14) {
+      if (isErr) addLog('norm-terminal', 'ÉCHEC — ' + handle + ' | productOptionUpdate ALREADY_LINKED', 'error');
+      else addLog('norm-terminal', 'SUCCÈS — ' + handle + ' | couleur liée | catégorie définie', 'ok');
+    } else if (i === 15) addLog('norm-terminal', '…', 'info');
+
+    setTimeout(step, i < 10 ? 120 : 18);
+  }
+  setTimeout(step, 400);
+}
+
+// ══ SEO BOOST ════════════════════════════════════════════════
+function seoReset() {
+  ['preview','running','done'].forEach(p =>
+    document.getElementById('seo-phase-'+p).style.display = 'none');
+  document.getElementById('seo-phase-idle').style.display = 'block';
+}
+
+function seoAnalyze() {
+  showToast('Génération GPT en cours…','info');
+  setTimeout(() => {
+    document.getElementById('seo-phase-idle').style.display = 'none';
+    document.getElementById('seo-phase-preview').style.display = 'block';
+    showToast('4 titres générés — preview prêt','success');
+  }, 2200);
+}
+
+function seoRun() {
+  document.getElementById('seo-phase-preview').style.display = 'none';
+  document.getElementById('seo-phase-running').style.display = 'block';
+  const items = [
+    'arbre-a-chat-fleur-rose','arbre-a-chat-mural-bois','arbre-a-chat-cactus-gris','tunnel-chat-beige'
+  ];
+  let i = 0;
+  function step() {
+    if (i >= 4) {
+      document.getElementById('seo-phase-running').style.display = 'none';
+      document.getElementById('seo-phase-done').style.display = 'block';
+      showToast('SEO Boost terminé — 4/4','success'); return;
+    }
+    i++;
+    document.getElementById('seo-progress-bar').style.width = (i/4*100)+'%';
+    document.getElementById('seo-progress-text').textContent = i + ' / 4';
+    addLog('seo-terminal','SEO injecté — '+items[i-1]+' | title ✓ | meta ✓ | body ✓','ok');
+    setTimeout(step, 700);
+  }
+  setTimeout(step, 500);
+}
+
+// ══ FICHE PRODUIT ════════════════════════════════════════════
+function ficheGenerate() {
+  const running = document.getElementById('fiche-phase-running');
+  running.style.display = 'block';
+  let i = 0; const total = 120;
+  const handles = ['arbre-a-chat-xxl-hamac-bois-beige','arbre-a-chat-design-gris-clair',
+    'arbre-a-chat-maine-coon-noir','arbre-a-chat-cactus-rose','...'];
+  function step() {
+    if (i >= total) {
+      addLog('fiche-terminal','Terminé — 120 fiches générées | Coût: $18.21','ok');
+      showToast('120 fiches générées !','success'); return;
+    }
+    i++;
+    document.getElementById('fiche-progress-bar').style.width = (i/total*100)+'%';
+    document.getElementById('fiche-progress-text').textContent = i + ' / ' + total;
+    if (i <= 5) addLog('fiche-terminal','Fiche générée — '+handles[Math.min(i-1,handles.length-1)]+' ('+Math.floor(Math.random()*80+180)+' mots)','ok');
+    else if (i === 6) addLog('fiche-terminal','…','info');
+    setTimeout(step, i < 6 ? 200 : 20);
+  }
+  setTimeout(step, 300);
+}
+
+// ══ AVIS CLIENTS ════════════════════════════════════════════
+function reviewsReset() {
+  ['preview','running','done'].forEach(p =>
+    document.getElementById('reviews-phase-'+p).style.display = 'none');
+  document.getElementById('reviews-phase-idle').style.display = 'block';
+}
+
+function reviewsGenerate() {
+  showToast('Génération GPT-4o-mini en cours…','info');
+  setTimeout(() => {
+    document.getElementById('reviews-phase-idle').style.display = 'none';
+    document.getElementById('reviews-phase-preview').style.display = 'block';
+    showToast('Preview prêt — validez avant injection','success');
+  }, 1600);
+}
+
+function reviewsInject() {
+  document.getElementById('reviews-phase-preview').style.display = 'none';
+  document.getElementById('reviews-phase-running').style.display = 'block';
+  const prods = ['Arbre à Chat Fleur Blanc','Arbre à Chat Cactus Vert','Tour Chat Maine Coon',
+    'Arbre Chat Design Violet','Arbre Chat Hamac Beige','Arbre Chat Bois Gris','Griffoir Sisal','Niche Igloo Rose'];
+  let i = 0;
+  function step() {
+    if (i >= 8) {
+      document.getElementById('reviews-phase-running').style.display = 'none';
+      document.getElementById('reviews-phase-done').style.display = 'block';
+      showToast('51 avis injectés avec succès','success'); return;
+    }
+    i++;
+    document.getElementById('reviews-progress-bar').style.width = (i/8*100)+'%';
+    document.getElementById('reviews-progress-text').textContent = i + ' / 8';
+    const nb = i <= 5 ? 8 : (i===6?2:8);
+    addLog('reviews-terminal',''+nb+' avis injectés — '+prods[i-1]+' | note_globale ✓','ok');
+    setTimeout(step, 500);
+  }
+  setTimeout(step, 400);
+}
+
+// ══ COLLECTIONS ══════════════════════════════════════════════
+function collectionsGenerate() {
+  showToast('Génération de toutes les descriptions en cours…','info');
+  let n = 0;
+  const interval = setInterval(() => {
+    n++;
+    if (n > 16) { clearInterval(interval); showToast('16 descriptions générées','success'); }
+  }, 200);
+}
+
+// ══ LOGS FILTER ══════════════════════════════════════════════
+function filterLogs(val) {
+  document.querySelectorAll('#logs-terminal .log-line').forEach(l => {
+    l.style.display = l.textContent.toLowerCase().includes(val.toLowerCase()) ? '' : 'none';
+  });
+}
+</script>
+</body>
+</html>

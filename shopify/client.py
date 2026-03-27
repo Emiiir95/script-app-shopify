@@ -5,6 +5,10 @@ from utils.logger import log
 
 SHOPIFY_API_VERSION = "2026-01"
 
+# Seuils du bucket Shopify REST (40 requêtes max)
+_THROTTLE_WARN  = 35   # ralentit à partir de 35/40
+_THROTTLE_STOP  = 38   # pause plus longue à partir de 38/40
+
 
 def shopify_headers(api_token):
     return {
@@ -17,16 +21,38 @@ def shopify_base_url(store_url, api_version=SHOPIFY_API_VERSION):
     return f"https://{store_url}/admin/api/{api_version}"
 
 
+def _throttle(resp):
+    """
+    Vérifie le header X-Shopify-Shop-Api-Call-Limit et attend proactivement
+    si le bucket est presque plein, évitant ainsi les 429.
+    Format du header : "used/total" (ex: "38/40")
+    """
+    limit_header = resp.headers.get("X-Shopify-Shop-Api-Call-Limit", "")
+    if not limit_header or "/" not in limit_header:
+        return
+    try:
+        used, total = limit_header.split("/")
+        used, total = int(used), int(total)
+    except ValueError:
+        return
+
+    if used >= _THROTTLE_STOP:
+        time.sleep(2.0)
+    elif used >= _THROTTLE_WARN:
+        time.sleep(0.5)
+
+
 def shopify_get(url, headers, params=None, max_retries=5):
     for attempt in range(max_retries):
         try:
             resp = requests.get(url, headers=headers, params=params, timeout=30)
             if resp.status_code == 429:
-                wait = int(float(resp.headers.get("Retry-After", 2)))
+                wait = int(float(resp.headers.get("Retry-After", 4)))
                 log(f"Rate limit Shopify GET — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            _throttle(resp)
             return resp.json()
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
@@ -44,11 +70,12 @@ def shopify_get_paginated(url, headers, params=None, max_retries=5):
         try:
             resp = requests.get(url, headers=headers, params=params, timeout=30)
             if resp.status_code == 429:
-                wait = int(float(resp.headers.get("Retry-After", 2)))
+                wait = int(float(resp.headers.get("Retry-After", 4)))
                 log(f"Rate limit Shopify GET — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            _throttle(resp)
             return resp.json(), resp.headers.get("Link", "")
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
@@ -65,11 +92,12 @@ def shopify_post(url, headers, payload, max_retries=5):
         try:
             resp = requests.post(url, headers=headers, json=payload, timeout=30)
             if resp.status_code == 429:
-                wait = int(float(resp.headers.get("Retry-After", 2)))
+                wait = int(float(resp.headers.get("Retry-After", 4)))
                 log(f"Rate limit Shopify POST — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            _throttle(resp)
             return resp.json()
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:
@@ -86,11 +114,12 @@ def shopify_put(url, headers, payload, max_retries=5):
         try:
             resp = requests.put(url, headers=headers, json=payload, timeout=30)
             if resp.status_code == 429:
-                wait = int(float(resp.headers.get("Retry-After", 2)))
+                wait = int(float(resp.headers.get("Retry-After", 4)))
                 log(f"Rate limit Shopify PUT — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
                 time.sleep(wait)
                 continue
             resp.raise_for_status()
+            _throttle(resp)
             return resp.json()
         except requests.exceptions.RequestException as e:
             if attempt < max_retries - 1:

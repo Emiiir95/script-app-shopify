@@ -151,18 +151,25 @@ def build_titres_prompt(product_keyword, niche_keyword, reassurance_points, supp
 \"\"\"
 """
 
-    return f"""Génère EXACTEMENT 2 titres accrocheurs pour "{product_keyword}".
+    return f"""Génère EXACTEMENT 2 titres de sections pour "{product_keyword}".
 
 {supplier_block}
 RÉASSURANCE :
 {reassurance}
 
 RÈGLES :
-- Texte brut, pas de HTML/guillemets
-- 2 titres TRÈS DIFFÉRENTS, max 10-12 mots chacun
-- Chaque titre évoque un bénéfice concret
+- Texte brut, pas de HTML/guillemets/numérotation
+- 2 titres TRÈS DIFFÉRENTS l'un de l'autre (angles différents)
+- Max 10 mots chacun, orienté bénéfice client
+- UNE ligne par titre, séparés par un saut de ligne
 
-Retourne UNIQUEMENT 2 lignes.
+FORMAT ATTENDU (2 lignes distinctes, rien d'autre) :
+Un confort incomparable pour votre chat
+Un design élégant qui s'intègre partout
+
+{INTERDICTIONS}
+
+Retourne UNIQUEMENT ces 2 lignes, sans introduction ni commentaire.
 """
 
 

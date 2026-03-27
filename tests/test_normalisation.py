@@ -125,20 +125,20 @@ class TestNormalizeProduct(unittest.TestCase):
         variants = [_variant(29.99, vid=101, sku="A"), _variant(39.99, vid=102, sku="B")]
         product  = _product(pid=1, status="active", variants=variants)
 
-        normalize_product(product, BASE_URL, HEADERS)
+        normalize_product(product, BASE_URL, HEADERS, "Ma Boutique")
 
-        # 2 PUT variantes (pas de PUT produit car status déjà active)
-        self.assertEqual(mock_put.call_count, 2)
+        # 1 PUT produit + 2 PUT variantes = 3 calls total
+        self.assertEqual(mock_put.call_count, 3)
         urls = [c.args[0] for c in mock_put.call_args_list]
         self.assertIn(f"{BASE_URL}/variants/101.json", urls)
         self.assertIn(f"{BASE_URL}/variants/102.json", urls)
 
     @patch("features.normalisation.injector.shopify_put")
-    def test_puts_product_when_status_not_active(self, mock_put):
+    def test_puts_product_always(self, mock_put):
         mock_put.return_value = {}
         product = _product(pid=5, status="draft", variants=[_variant(10.00, vid=200)])
 
-        normalize_product(product, BASE_URL, HEADERS)
+        normalize_product(product, BASE_URL, HEADERS, "Ma Boutique")
 
         # 1 PUT produit + 1 PUT variante = 2 calls total
         self.assertEqual(mock_put.call_count, 2)
@@ -147,11 +147,23 @@ class TestNormalizeProduct(unittest.TestCase):
         self.assertIn(product_url, urls)
 
     @patch("features.normalisation.injector.shopify_put")
+    def test_product_payload_includes_vendor(self, mock_put):
+        mock_put.return_value = {}
+        product = _product(pid=5, status="active", variants=[_variant(10.00, vid=200)])
+
+        normalize_product(product, BASE_URL, HEADERS, "Ma Boutique")
+
+        product_call = next(c for c in mock_put.call_args_list if "products" in c.args[0])
+        payload = product_call.args[2]["product"]
+        self.assertEqual(payload["vendor"], "Ma Boutique")
+        self.assertEqual(payload["status"], "active")
+
+    @patch("features.normalisation.injector.shopify_put")
     def test_variant_payload_has_correct_fields(self, mock_put):
         mock_put.return_value = {}
         product = _product(pid=1, status="active", variants=[_variant(29.99, compare_at=49.99, vid=101)])
 
-        normalize_product(product, BASE_URL, HEADERS)
+        normalize_product(product, BASE_URL, HEADERS, "Ma Boutique")
 
         variant_call = next(
             c for c in mock_put.call_args_list
@@ -171,18 +183,8 @@ class TestNormalizeProduct(unittest.TestCase):
         variants = [_variant(10.00, vid=1), _variant(20.00, vid=2), _variant(30.00, vid=3)]
         product  = _product(status="active", variants=variants)
 
-        results = normalize_product(product, BASE_URL, HEADERS)
+        results = normalize_product(product, BASE_URL, HEADERS, "Ma Boutique")
         self.assertEqual(len(results), 3)
-
-    @patch("features.normalisation.injector.shopify_put")
-    def test_skips_product_put_when_already_active(self, mock_put):
-        mock_put.return_value = {}
-        product = _product(pid=9, status="active", variants=[_variant(10.00, vid=99)])
-
-        normalize_product(product, BASE_URL, HEADERS)
-
-        urls = [c.args[0] for c in mock_put.call_args_list]
-        self.assertNotIn(f"{BASE_URL}/products/9.json", urls)
 
 
 # ── generate_injection_report ─────────────────────────────────────────────────
