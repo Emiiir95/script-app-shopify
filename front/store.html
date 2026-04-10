@@ -2133,7 +2133,7 @@
                 <label class="input-label">Access Token</label>
                 <input
                   class="input"
-                  value="shpat_••••••••••••••••••••••••••••"
+                  value="test"
                   id="cfg-token"
                   type="password"
                 />
@@ -3011,9 +3011,7 @@ Vous disposez de 30 jours pour retourner un article...</textarea
         tokenVisible = !tokenVisible;
         const inp = document.getElementById("cfg-token");
         inp.type = tokenVisible ? "text" : "password";
-        inp.value = tokenVisible
-          ? "shpat_REDACTED"
-          : "shpat_••••••••••••••••••••••••••••";
+        inp.value = tokenVisible ? "test" : "test";
         event.target.textContent = tokenVisible ? "Masquer" : "Afficher";
       }
 
