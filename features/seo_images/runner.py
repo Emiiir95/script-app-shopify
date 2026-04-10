@@ -29,9 +29,10 @@ from features.seo_images.injector import (
     generate_injection_report,
 )
 from utils.logger import log, LOG_FILE
+from utils.product_filter import ask_product_status
 
 
-def _fetch_products_with_seo_images(base_url, headers):
+def _fetch_products_with_seo_images(base_url, headers, status=None):
     """
     Récupère tous les produits avec leurs images MediaImage GIDs et meta title
     via une seule requête GraphQL paginée.
@@ -43,32 +44,33 @@ def _fetch_products_with_seo_images(base_url, headers):
             "images"     : [{"gid": str, "url": str}, ...]
         }
     """
-    query = """
-    query getProductsSEOImages($cursor: String) {
-      products(first: 50, after: $cursor) {
-        edges {
+    status_filter = f', query: "status:{status}"' if status else ""
+    query = f"""
+    query getProductsSEOImages($cursor: String) {{
+      products(first: 50, after: $cursor{status_filter}) {{
+        edges {{
           cursor
-          node {
+          node {{
             handle
             title
-            metafield(namespace: "global", key: "title_tag") {
+            metafield(namespace: "global", key: "title_tag") {{
               value
-            }
-            media(first: 20) {
-              edges {
-                node {
-                  ... on MediaImage {
+            }}
+            media(first: 20) {{
+              edges {{
+                node {{
+                  ... on MediaImage {{
                     id
-                    image { url }
-                  }
-                }
-              }
-            }
-          }
-        }
-        pageInfo { hasNextPage }
-      }
-    }
+                    image {{ url }}
+                  }}
+                }}
+              }}
+            }}
+          }}
+        }}
+        pageInfo {{ hasNextPage }}
+      }}
+    }}
     """
 
     products = []
@@ -157,8 +159,9 @@ def run(store_config, store_path):
     headers  = shopify_headers(store_config["access_token"])
 
     # ── Fetch produits + images ────────────────────────────────────────────────
+    product_status = ask_product_status()
     print("\n[1/3] Récupération des produits et images...")
-    products = _fetch_products_with_seo_images(base_url, headers)
+    products = _fetch_products_with_seo_images(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)

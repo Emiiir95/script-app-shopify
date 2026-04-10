@@ -50,6 +50,7 @@ from features.seo_boost.generator import strip_html
 from utils.logger import log, LOG_FILE
 from utils.cost_tracker import CostTracker, estimate_cost
 from utils.checkpoint import save_progress, load_progress, clear_progress
+from utils.product_filter import ask_product_status
 
 # ── Modèles et constantes ──────────────────────────────────────────────────────
 MODEL_MAIN      = "gpt-4o"        # benefices
@@ -312,6 +313,7 @@ def run(store_config, store_path):
 
     cost_tracker_main = CostTracker(model=MODEL_MAIN)
     cost_tracker_mini = CostTracker(model=MODEL_SECONDARY)
+    product_status = ask_product_status()
 
     # ── Vérification du cache ─────────────────────────────────────────────────
     cached = _load_cache(store_path)
@@ -331,7 +333,7 @@ def run(store_config, store_path):
             headers  = shopify_headers(store_config["access_token"])
             # Recharge les images avec admin_graphql_api_id (non sauvegardés dans le cache)
             print("[INFO] Rechargement des images produit...")
-            fresh_products = fetch_all_products_with_images(base_url, headers)
+            fresh_products = fetch_all_products_with_images(base_url, headers, status=product_status)
             fresh_by_handle = {p["handle"]: p for p in fresh_products}
             for entry in cached["products_data"]:
                 handle  = entry["product"].get("handle", "")
@@ -377,7 +379,7 @@ def run(store_config, store_path):
 
     # ── Fetch produits ────────────────────────────────────────────────────────
     print("\n[3/4] Récupération des produits Shopify (avec images)...")
-    products = fetch_all_products_with_images(base_url, headers)
+    products = fetch_all_products_with_images(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)

@@ -34,6 +34,7 @@ from features.reviews.injector import generate_csv_preview, generate_injection_r
 from features.reviews.prompts import build_system_prompt
 from utils.logger import log, LOG_FILE
 from utils.cost_tracker import CostTracker, estimate_cost
+from utils.product_filter import ask_product_status
 from utils.checkpoint import (
     save_progress, load_progress, clear_progress,
     save_generated_reviews, load_generated_reviews, clear_generated_reviews,
@@ -253,7 +254,8 @@ def run(store_config, store_path):
 
     # ── 3. Récupération des produits ──────────────────────────────────────────
     print("\n[3/5] Récupération des produits Shopify...")
-    products = fetch_all_products(base_url, headers)
+    product_status = ask_product_status()
+    products = fetch_all_products(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)

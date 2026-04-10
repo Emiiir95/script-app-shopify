@@ -55,6 +55,7 @@ from features.seo_boost.injector import generate_csv_preview, generate_injection
 from utils.logger import log, LOG_FILE
 from utils.cost_tracker import CostTracker, estimate_cost
 from utils.checkpoint import save_progress, load_progress, clear_progress
+from utils.product_filter import ask_product_status
 
 from datetime import datetime
 
@@ -927,8 +928,9 @@ def run(store_config, store_path):
     openai_client = OpenAI(api_key=store_config["openai_key"])
 
     # ── 3. Récupération des produits (avec body_html) ─────────────────────────
+    product_status = ask_product_status()
     print("\n[3/4] Récupération des produits Shopify...")
-    products = fetch_all_products_full(base_url, headers)
+    products = fetch_all_products_full(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)

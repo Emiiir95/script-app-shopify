@@ -2,10 +2,12 @@ from shopify.client import shopify_get, shopify_get_paginated, shopify_post, sho
 from utils.logger import log
 
 
-def fetch_all_products(base_url, headers):
+def fetch_all_products(base_url, headers, status=None):
     products = []
     url = f"{base_url}/products.json"
     params = {"limit": 250, "fields": "id,handle,title"}
+    if status:
+        params["status"] = status
 
     while url:
         data, link_header = shopify_get_paginated(url, headers, params=params)
@@ -23,11 +25,13 @@ def fetch_all_products(base_url, headers):
     return products
 
 
-def fetch_all_products_full(base_url, headers):
+def fetch_all_products_full(base_url, headers, status=None):
     """Fetch tous les produits avec body_html et vendor (pour SEO Boost)."""
     products = []
     url = f"{base_url}/products.json"
     params = {"limit": 250, "fields": "id,handle,title,body_html,vendor,tags"}
+    if status:
+        params["status"] = status
 
     while url:
         data, link_header = shopify_get_paginated(url, headers, params=params)
@@ -45,11 +49,13 @@ def fetch_all_products_full(base_url, headers):
     return products
 
 
-def fetch_all_products_with_variants(base_url, headers):
+def fetch_all_products_with_variants(base_url, headers, status=None):
     """Fetch tous les produits avec leurs variantes (pour Normalisation)."""
     products = []
     url = f"{base_url}/products.json"
     params = {"limit": 250, "fields": "id,handle,title,status,variants,options"}
+    if status:
+        params["status"] = status
 
     while url:
         data, link_header = shopify_get_paginated(url, headers, params=params)
@@ -67,11 +73,13 @@ def fetch_all_products_with_variants(base_url, headers):
     return products
 
 
-def fetch_all_products_with_images(base_url, headers):
+def fetch_all_products_with_images(base_url, headers, status=None):
     """Fetch tous les produits avec body_html, vendor, tags ET images (pour Fiche Produit)."""
     products = []
     url = f"{base_url}/products.json"
     params = {"limit": 250, "fields": "id,handle,title,body_html,vendor,tags,images"}
+    if status:
+        params["status"] = status
 
     while url:
         data, link_header = shopify_get_paginated(url, headers, params=params)

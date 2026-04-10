@@ -344,12 +344,12 @@ def compute_variant_changes(variant):
     }
 
 
-def normalize_product(product, base_url, headers, vendor, category_gid=None, taxonomy_node_id=None, color_map=None):
+def normalize_product(product, base_url, headers, vendor, category_gid=None, taxonomy_node_id=None, color_map=None, keep_status=False):
     """
     Normalise un produit et toutes ses variantes dans Shopify.
 
     Étapes :
-      1. PUT product  → status "active" + vendor = nom boutique
+      1. PUT product  → status + vendor = nom boutique
       2. GraphQL      → catégorie taxonomique (si category_gid fourni)
       3. Pour chaque variante → PUT variant avec prix normalisé + champs cibles
                               → GraphQL shopify.color-pattern (si option "Couleur" + color_map)
@@ -363,6 +363,7 @@ def normalize_product(product, base_url, headers, vendor, category_gid=None, tax
         taxonomy_node_id : GID ProductTaxonomyNode (repli si category_gid absent) ou None
         color_map        : dict { nom_couleur_lowercase: gid } issu de fetch_color_pattern_map()
                        ou None pour ne pas modifier le metafield couleur
+        keep_status      : si True, garde le status actuel du produit au lieu de forcer "active"
 
     Returns:
         list de dicts — une entrée par variante avec les valeurs avant/après
@@ -373,13 +374,14 @@ def normalize_product(product, base_url, headers, vendor, category_gid=None, tax
     variant_results = []
 
     # ── Étape 1 : status + vendor produit (REST) ──────────────────────────────
-    product_update = {"id": product_id, "status": _TARGET_STATUS, "vendor": vendor}
+    target_status = product.get("status", _TARGET_STATUS) if keep_status else _TARGET_STATUS
+    product_update = {"id": product_id, "status": target_status, "vendor": vendor}
     shopify_put(
         f"{base_url}/products/{product_id}.json",
         headers,
         {"product": product_update},
     )
-    log(f"Produit mis à jour — {handle} | status: active | vendor: {vendor!r}")
+    log(f"Produit mis à jour — {handle} | status: {target_status} | vendor: {vendor!r}")
 
     # ── Étape 2 : catégorie taxonomique (GraphQL) ─────────────────────────────
     effective_category = category_gid or taxonomy_node_id

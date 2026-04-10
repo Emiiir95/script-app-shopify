@@ -1,0 +1,3048 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Store Manager</title>
+    <style>
+      :root {
+        --bg: #f5f5f8;
+        --surface: #ffffff;
+        --border: #e4e4ef;
+        --border2: #efeff5;
+        --primary: #5b5bd6;
+        --primary-light: rgba(91, 91, 214, 0.1);
+        --primary-mid: rgba(91, 91, 214, 0.2);
+        --text: #1c1c2e;
+        --muted: #71717a;
+        --muted2: #a1a1b5;
+        --success: #16a34a;
+        --success-bg: rgba(22, 163, 74, 0.08);
+        --warn: #d97706;
+        --warn-bg: rgba(217, 119, 6, 0.08);
+        --red: #dc2626;
+        --red-bg: rgba(220, 38, 38, 0.08);
+        --radius: 12px;
+        --radius-sm: 8px;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 16px rgba(0, 0, 0, 0.04);
+        --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      /* ─── TOPBAR ───────────────────────────────────── */
+      .topbar {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        height: 56px;
+        display: flex;
+        align-items: center;
+        padding: 0 20px;
+        gap: 0;
+        position: sticky;
+        top: 0;
+        z-index: 200;
+        box-shadow: 0 1px 0 var(--border);
+      }
+
+      .shop-switcher {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        border: 1px solid var(--border);
+        background: var(--bg);
+        transition: all 0.15s;
+        margin-right: 20px;
+        min-width: 200px;
+        position: relative;
+        user-select: none;
+      }
+      .shop-switcher:hover {
+        border-color: var(--primary);
+        background: var(--surface);
+      }
+      .shop-avatar {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        flex-shrink: 0;
+      }
+      .shop-info {
+        flex: 1;
+      }
+      .shop-info .shop-name {
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.2;
+      }
+      .shop-info .shop-url {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .shop-caret {
+        color: var(--muted);
+        font-size: 11px;
+        transition: transform 0.15s;
+      }
+      .shop-switcher.open .shop-caret {
+        transform: rotate(180deg);
+      }
+
+      .shop-dropdown {
+        display: none;
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-lg);
+        overflow: hidden;
+        z-index: 300;
+      }
+      .shop-dropdown.open {
+        display: block;
+      }
+      .shop-dropdown-section {
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border2);
+      }
+      .shop-dropdown-section:last-child {
+        border: none;
+      }
+      .shop-dropdown-label {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted2);
+        padding: 4px 12px;
+      }
+      .shop-option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        cursor: pointer;
+        transition: background 0.1s;
+      }
+      .shop-option:hover {
+        background: var(--bg);
+      }
+      .shop-option.active .shop-name {
+        color: var(--primary);
+      }
+      .shop-option .check {
+        margin-left: auto;
+        color: var(--primary);
+        font-size: 13px;
+        opacity: 0;
+      }
+      .shop-option.active .check {
+        opacity: 1;
+      }
+      .shop-add {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        cursor: pointer;
+        color: var(--primary);
+        font-size: 13px;
+        transition: background 0.1s;
+      }
+      .shop-add:hover {
+        background: var(--primary-light);
+      }
+
+      .nav-tabs {
+        display: flex;
+        gap: 2px;
+      }
+      .nav-tab {
+        padding: 7px 14px;
+        border-radius: 7px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--muted);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      .nav-tab:hover {
+        background: var(--bg);
+        color: var(--text);
+      }
+      .nav-tab.active {
+        background: var(--primary-light);
+        color: var(--primary);
+        font-weight: 600;
+      }
+
+      .topbar-right {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .api-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .api-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 5px var(--success);
+      }
+
+      /* ─── MAIN LAYOUT ──────────────────────────────── */
+      .page-wrap {
+        display: none;
+      }
+      .page-wrap.active {
+        display: block;
+      }
+      .content {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 28px 24px;
+      }
+
+      /* ─── SHARED ──────────────────────────────────── */
+      .section-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .section-title {
+        font-size: 20px;
+        font-weight: 700;
+      }
+      .section-sub {
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border-radius: var(--radius-sm);
+        border: none;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 600;
+        transition: all 0.15s;
+      }
+      .btn-primary {
+        background: var(--primary);
+        color: #fff;
+      }
+      .btn-primary:hover {
+        background: #4a4abf;
+      }
+      .btn-ghost {
+        background: transparent;
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+      .btn-ghost:hover {
+        background: var(--bg);
+        color: var(--text);
+      }
+      .btn-danger {
+        background: var(--red-bg);
+        color: var(--red);
+        border: 1px solid var(--red);
+      }
+      .btn-sm {
+        padding: 5px 10px;
+        font-size: 12px;
+      }
+      .btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 9px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+      .badge-green {
+        background: var(--success-bg);
+        color: var(--success);
+      }
+      .badge-amber {
+        background: var(--warn-bg);
+        color: var(--warn);
+      }
+      .badge-red {
+        background: var(--red-bg);
+        color: var(--red);
+      }
+      .badge-purple {
+        background: var(--primary-light);
+        color: var(--primary);
+      }
+      .badge-gray {
+        background: var(--bg);
+        color: var(--muted);
+        border: 1px solid var(--border);
+      }
+
+      .input {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 9px 12px;
+        color: var(--text);
+        font-size: 13px;
+        outline: none;
+        transition: border-color 0.15s;
+        width: 100%;
+      }
+      .input:focus {
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px var(--primary-light);
+      }
+      select.input {
+        cursor: pointer;
+      }
+      .input-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 5px;
+        display: block;
+      }
+      .input-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .divider {
+        height: 1px;
+        background: var(--border2);
+        margin: 16px 0;
+      }
+
+      /* ─── PRODUCTS PAGE ───────────────────────────── */
+      .products-layout {
+        display: grid;
+        grid-template-columns: 1fr 400px;
+        gap: 20px;
+      }
+      .products-layout.no-detail {
+        grid-template-columns: 1fr;
+      }
+
+      .search-bar {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .search-input-wrap {
+        position: relative;
+        flex: 1;
+      }
+      .search-input-wrap .icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .search-input-wrap input {
+        padding-left: 38px;
+      }
+
+      .filter-chips {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 500;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        cursor: pointer;
+        transition: all 0.15s;
+        color: var(--muted);
+      }
+      .chip:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+      }
+      .chip.active {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      .product-table {
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .product-row {
+        display: grid;
+        grid-template-columns: 52px 1fr 100px 90px 90px 80px;
+        align-items: center;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border2);
+        cursor: pointer;
+        transition: background 0.1s;
+        gap: 12px;
+      }
+      .product-row:last-child {
+        border-bottom: none;
+      }
+      .product-row:hover {
+        background: var(--bg);
+      }
+      .product-row.active {
+        background: var(--primary-light);
+      }
+      .product-row.header {
+        background: var(--bg);
+        cursor: default;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .product-thumb {
+        width: 40px;
+        height: 40px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        flex-shrink: 0;
+        border: 1px solid var(--border);
+        overflow: hidden;
+      }
+      .product-title-cell {
+        min-width: 0;
+      }
+      .product-title-cell .title {
+        font-size: 13px;
+        font-weight: 500;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .product-title-cell .handle {
+        font-size: 11px;
+        color: var(--muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .color-dot {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+      }
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        flex-shrink: 0;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+      }
+
+      /* ─── PRODUCT DETAIL PANEL ────────────────────── */
+      .detail-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        position: sticky;
+        top: 76px;
+        max-height: calc(100vh - 96px);
+        overflow-y: auto;
+        display: none;
+      }
+      .detail-panel.open {
+        display: block;
+      }
+
+      .detail-hero {
+        height: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 60px;
+        border-radius: var(--radius) var(--radius) 0 0;
+        position: relative;
+      }
+      .detail-close {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(0, 0, 0, 0.3);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.15s;
+      }
+      .detail-close:hover {
+        background: rgba(0, 0, 0, 0.5);
+      }
+      .detail-body {
+        padding: 20px;
+      }
+      .detail-name {
+        font-size: 16px;
+        font-weight: 700;
+        margin-bottom: 4px;
+      }
+      .detail-handle {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 16px;
+      }
+
+      .detail-section {
+        margin-bottom: 16px;
+      }
+      .detail-section-title {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .detail-key {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .detail-val {
+        font-size: 12px;
+        font-weight: 500;
+        text-align: right;
+      }
+      .progress-mini {
+        height: 4px;
+        background: var(--border);
+        border-radius: 2px;
+        margin-top: 4px;
+      }
+      .progress-mini-fill {
+        height: 100%;
+        border-radius: 2px;
+        background: var(--primary);
+      }
+
+      /* ─── COLLECTIONS PAGE ────────────────────────── */
+      .coll-layout {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        gap: 24px;
+        align-items: start;
+      }
+
+      .coll-board {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+      .coll-group-title {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--muted);
+        padding: 0 4px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .coll-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 12px;
+      }
+
+      .coll-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        overflow: hidden;
+      }
+      .coll-card::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 3px;
+        height: 100%;
+      }
+      .coll-card.type::after {
+        background: var(--primary);
+      }
+      .coll-card.variation::after {
+        background: #06b6d4;
+      }
+      .coll-card.main::after {
+        background: #f59e0b;
+      }
+      .coll-card:hover {
+        border-color: var(--primary);
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-1px);
+      }
+      .coll-card-name {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .coll-card-url {
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 10px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .coll-card-stats {
+        display: flex;
+        gap: 10px;
+      }
+      .coll-stat {
+        display: flex;
+        flex-direction: column;
+      }
+      .coll-stat-val {
+        font-size: 16px;
+        font-weight: 700;
+      }
+      .coll-stat-lbl {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .coll-add-card {
+        border: 2px dashed var(--border);
+        background: transparent;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 120px;
+        gap: 6px;
+        cursor: pointer;
+        transition: all 0.15s;
+        color: var(--muted);
+        font-size: 12px;
+        border-radius: var(--radius);
+      }
+      .coll-add-card:hover {
+        border-color: var(--primary);
+        color: var(--primary);
+        background: var(--primary-light);
+      }
+      .coll-add-card .icon {
+        font-size: 22px;
+      }
+
+      .coll-form-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        position: sticky;
+        top: 76px;
+        padding: 20px;
+      }
+      .coll-form-title {
+        font-size: 15px;
+        font-weight: 700;
+        margin-bottom: 16px;
+      }
+      .form-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .form-row-2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      /* ─── SEO IMAGES PAGE ─────────────────────────── */
+      .seo-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .seo-preview-card {
+        background: linear-gradient(135deg, #667eea15, #764ba215);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-top: 16px;
+      }
+      .seo-preview-title {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+        margin-bottom: 8px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .seo-example {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary);
+        margin-bottom: 4px;
+      }
+      .seo-tokens span {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-family: monospace;
+        background: var(--primary-light);
+        color: var(--primary);
+        margin: 2px;
+      }
+      .param-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        box-shadow: var(--shadow);
+      }
+      .param-title {
+        font-size: 14px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .param-desc {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 14px;
+        line-height: 1.6;
+      }
+
+      .toggle-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid var(--border2);
+      }
+      .toggle-row:last-child {
+        border: none;
+        padding-bottom: 0;
+      }
+      .toggle-info .toggle-name {
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .toggle-info .toggle-sub {
+        font-size: 11px;
+        color: var(--muted);
+      }
+
+      .toggle {
+        width: 40px;
+        height: 22px;
+        border-radius: 11px;
+        background: var(--border);
+        cursor: pointer;
+        position: relative;
+        transition: background 0.2s;
+        flex-shrink: 0;
+      }
+      .toggle.on {
+        background: var(--primary);
+      }
+      .toggle::after {
+        content: "";
+        position: absolute;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #fff;
+        top: 2px;
+        left: 2px;
+        transition: transform 0.2s;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+      }
+      .toggle.on::after {
+        transform: translateX(18px);
+      }
+
+      /* ─── POLITIQUE PAGE ──────────────────────────── */
+      .politic-layout {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 20px;
+      }
+      .politic-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .politic-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: var(--radius-sm);
+        cursor: pointer;
+        transition: all 0.15s;
+        border: 1px solid transparent;
+      }
+      .politic-item:hover {
+        background: var(--bg);
+      }
+      .politic-item.active {
+        background: var(--primary-light);
+        border-color: var(--primary-mid);
+      }
+      .politic-item.active .politic-name {
+        color: var(--primary);
+        font-weight: 600;
+      }
+      .politic-icon {
+        font-size: 20px;
+        width: 32px;
+        text-align: center;
+      }
+      .politic-name {
+        font-size: 13px;
+        font-weight: 500;
+      }
+      .politic-status {
+        margin-left: auto;
+      }
+
+      .politic-editor {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .politic-editor-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .politic-editor-body {
+        padding: 20px;
+      }
+      .politic-preview {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 20px;
+        font-size: 13px;
+        line-height: 1.8;
+        color: var(--text);
+        max-height: 420px;
+        overflow-y: auto;
+        margin-bottom: 16px;
+      }
+      .politic-preview h3 {
+        font-size: 15px;
+        margin-bottom: 8px;
+        margin-top: 16px;
+      }
+      .politic-preview h3:first-child {
+        margin-top: 0;
+      }
+      .politic-preview p {
+        margin-bottom: 10px;
+        color: var(--muted);
+      }
+      .politic-preview ul {
+        padding-left: 20px;
+        margin-bottom: 10px;
+        color: var(--muted);
+      }
+      .politic-preview li {
+        margin-bottom: 4px;
+      }
+      .politic-var {
+        color: var(--primary);
+        font-weight: 600;
+      }
+
+      .inject-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 20px;
+        background: var(--bg);
+        border-top: 1px solid var(--border);
+        border-radius: 0 0 var(--radius) var(--radius);
+      }
+
+      /* ─── CONFIG PAGE ─────────────────────────────── */
+      .config-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+      }
+      .config-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+      .config-card-header {
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .config-card-icon {
+        font-size: 18px;
+      }
+      .config-card-title {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .config-card-body {
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .config-full {
+        grid-column: 1 / -1;
+      }
+
+      .lang-selector {
+        display: flex;
+        gap: 8px;
+      }
+      .lang-btn {
+        padding: 8px 16px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: var(--bg);
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 500;
+        transition: all 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .lang-btn:hover {
+        border-color: var(--primary);
+      }
+      .lang-btn.active {
+        background: var(--primary);
+        color: #fff;
+        border-color: var(--primary);
+      }
+
+      .token-field {
+        position: relative;
+      }
+      .token-field input {
+        padding-right: 80px;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .token-reveal {
+        position: absolute;
+        right: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 11px;
+        color: var(--primary);
+        cursor: pointer;
+        font-weight: 600;
+      }
+
+      /* ─── TOAST ───────────────────────────────────── */
+      .toasts {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 500;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        pointer-events: none;
+      }
+      .toast {
+        background: #1c1c2e;
+        color: #fff;
+        border-radius: var(--radius-sm);
+        padding: 12px 16px;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        box-shadow: var(--shadow-lg);
+        animation: toastIn 0.2s ease;
+        pointer-events: all;
+        max-width: 300px;
+        border-left: 3px solid var(--primary);
+      }
+      .toast.success {
+        border-left-color: var(--success);
+      }
+      .toast.warn {
+        border-left-color: var(--warn);
+      }
+      .toast.error {
+        border-left-color: var(--red);
+      }
+      @keyframes toastIn {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+      }
+
+      /* ─── MODAL ───────────────────────────────────── */
+      .overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(4px);
+        z-index: 400;
+        align-items: center;
+        justify-content: center;
+      }
+      .overlay.open {
+        display: flex;
+      }
+      .modal {
+        background: var(--surface);
+        border-radius: 16px;
+        box-shadow: 0 24px 64px rgba(0, 0, 0, 0.2);
+        width: 480px;
+        max-width: 92vw;
+        animation: modalIn 0.2s ease;
+      }
+      .modal-header {
+        padding: 20px 24px 0;
+      }
+      .modal-header h3 {
+        font-size: 17px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+      .modal-header p {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .modal-body {
+        padding: 16px 24px;
+      }
+      .modal-footer {
+        padding: 0 24px 20px;
+        display: flex;
+        gap: 10px;
+        justify-content: flex-end;
+      }
+      @keyframes modalIn {
+        from {
+          opacity: 0;
+          transform: scale(0.96);
+        }
+      }
+
+      /* ─── MISC ────────────────────────────────────── */
+      .spinner {
+        display: inline-block;
+        width: 15px;
+        height: 15px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .flex {
+        display: flex;
+        align-items: center;
+      }
+      .gap-8 {
+        gap: 8px;
+      }
+      .gap-12 {
+        gap: 12px;
+      }
+      .gap-16 {
+        gap: 16px;
+      }
+      .ml-auto {
+        margin-left: auto;
+      }
+      .mt-16 {
+        margin-top: 16px;
+      }
+      .empty {
+        text-align: center;
+        padding: 48px 20px;
+        color: var(--muted);
+      }
+      .empty .icon {
+        font-size: 36px;
+        margin-bottom: 10px;
+      }
+      .empty p {
+        font-size: 13px;
+      }
+      ::-webkit-scrollbar {
+        width: 5px;
+        height: 5px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ══ TOPBAR ═══════════════════════════════════════════════════════════ -->
+    <header class="topbar">
+      <div class="shop-switcher" id="shopSwitcher" onclick="toggleShop()">
+        <div
+          class="shop-avatar"
+          id="shopAvatar"
+          style="background: linear-gradient(135deg, #5b5bd6, #8b5cf6)"
+        >
+          🐱
+        </div>
+        <div class="shop-info">
+          <div class="shop-name" id="shopName">Le Perchoir Du Chat</div>
+          <div class="shop-url" id="shopUrl">5r2rfg-iv.myshopify.com</div>
+        </div>
+        <span class="shop-caret">▾</span>
+        <div
+          class="shop-dropdown"
+          id="shopDropdown"
+          onclick="event.stopPropagation()"
+        >
+          <div class="shop-dropdown-section">
+            <div class="shop-dropdown-label">Boutiques connectées</div>
+            <div
+              class="shop-option active"
+              onclick="
+                switchShop(
+                  'perchoir',
+                  'Le Perchoir Du Chat',
+                  '5r2rfg-iv.myshopify.com',
+                  '🐱',
+                  'linear-gradient(135deg,#5B5BD6,#8B5CF6)',
+                )
+              "
+            >
+              <div
+                class="shop-avatar"
+                style="
+                  background: linear-gradient(135deg, #5b5bd6, #8b5cf6);
+                  width: 28px;
+                  height: 28px;
+                  font-size: 13px;
+                  border-radius: 7px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                🐱
+              </div>
+              <div class="shop-info">
+                <div class="shop-name">Le Perchoir Du Chat</div>
+                <div class="shop-url">5r2rfg-iv.myshopify.com</div>
+              </div>
+              <span class="check">✓</span>
+            </div>
+            <div
+              class="shop-option"
+              onclick="
+                switchShop(
+                  'veilleuse',
+                  'Atelier Veilleuse',
+                  'atelier-veilleuse.myshopify.com',
+                  '🕯️',
+                  'linear-gradient(135deg,#F59E0B,#EF4444)',
+                )
+              "
+            >
+              <div
+                class="shop-avatar"
+                style="
+                  background: linear-gradient(135deg, #f59e0b, #ef4444);
+                  width: 28px;
+                  height: 28px;
+                  font-size: 13px;
+                  border-radius: 7px;
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                "
+              >
+                🕯️
+              </div>
+              <div class="shop-info">
+                <div class="shop-name">Atelier Veilleuse</div>
+                <div class="shop-url">atelier-veilleuse.myshopify.com</div>
+              </div>
+              <span class="check">✓</span>
+            </div>
+          </div>
+          <div class="shop-dropdown-section">
+            <div
+              class="shop-add"
+              onclick="
+                toast(
+                  'Copiez _template/ dans stores/ pour ajouter une boutique',
+                  'info',
+                )
+              "
+            >
+              <span style="font-size: 18px">+</span> Connecter une boutique
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="nav-tabs">
+        <div
+          class="nav-tab active"
+          onclick="navigate('products')"
+          id="tab-products"
+        >
+          Produits
+        </div>
+        <div
+          class="nav-tab"
+          onclick="navigate('collections')"
+          id="tab-collections"
+        >
+          Collections
+        </div>
+        <div class="nav-tab" onclick="navigate('seo')" id="tab-seo">
+          SEO Images
+        </div>
+        <div class="nav-tab" onclick="navigate('politique')" id="tab-politique">
+          Politiques
+        </div>
+        <div class="nav-tab" onclick="navigate('config')" id="tab-config">
+          Configuration
+        </div>
+      </nav>
+
+      <div class="topbar-right">
+        <div class="api-status">
+          <div class="api-dot"></div>
+          <span>Connecté</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══ PRODUCTS PAGE ════════════════════════════════════════════════════ -->
+    <div class="page-wrap active" id="page-products">
+      <div class="content">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Produits</div>
+            <div class="section-sub" id="products-count">
+              120 produits dans la boutique
+            </div>
+          </div>
+          <div style="margin-left: auto; display: flex; gap: 8px">
+            <button
+              class="btn btn-ghost btn-sm"
+              onclick="toast('Synchronisation Shopify…', 'info')"
+            >
+              🔄 Sync
+            </button>
+          </div>
+        </div>
+
+        <div class="search-bar">
+          <div class="search-input-wrap" style="flex: 1">
+            <span class="icon">🔍</span>
+            <input
+              class="input"
+              placeholder="Rechercher un produit…"
+              oninput="filterProducts(this.value)"
+              id="search-input"
+            />
+          </div>
+          <select
+            class="input"
+            style="width: 140px"
+            onchange="filterByStatus(this.value)"
+          >
+            <option value="">Tous les statuts</option>
+            <option value="active">Actif</option>
+            <option value="draft">Brouillon</option>
+          </select>
+        </div>
+
+        <div class="filter-chips" id="filter-chips">
+          <div class="chip active" onclick="filterColor('')">
+            Toutes couleurs
+          </div>
+          <div class="chip" onclick="filterColor('Beige')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #ead8ab;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Beige
+          </div>
+          <div class="chip" onclick="filterColor('Gris')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #808080;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Gris
+          </div>
+          <div class="chip" onclick="filterColor('Noir')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #000;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Noir
+          </div>
+          <div class="chip" onclick="filterColor('Vert')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #05aa3d;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Vert
+          </div>
+          <div class="chip" onclick="filterColor('Rose')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #ffc0cb;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Rose
+          </div>
+          <div class="chip" onclick="filterColor('Blanc')">
+            <span
+              style="
+                display: inline-block;
+                width: 8px;
+                height: 8px;
+                background: #ddd;
+                border-radius: 2px;
+                margin-right: 4px;
+              "
+            ></span
+            >Blanc
+          </div>
+        </div>
+
+        <div id="products-layout" class="products-layout no-detail">
+          <div class="card product-table" id="product-list">
+            <div class="product-row header">
+              <div></div>
+              <div>Produit</div>
+              <div>Couleur</div>
+              <div>Prix</div>
+              <div>Statut</div>
+              <div>SEO</div>
+            </div>
+            <!-- rows injected by JS -->
+          </div>
+
+          <div class="detail-panel" id="detail-panel">
+            <div class="detail-hero" id="detail-hero">
+              <div class="detail-close" onclick="closeDetail()">✕</div>
+            </div>
+            <div class="detail-body">
+              <div class="detail-name" id="d-name"></div>
+              <div class="detail-handle" id="d-handle"></div>
+
+              <div class="detail-section">
+                <div class="detail-section-title">💰 Prix & variantes</div>
+                <div class="detail-row">
+                  <span class="detail-key">Prix actuel</span
+                  ><span class="detail-val" id="d-price"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Compare at</span
+                  ><span class="detail-val" id="d-compare"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Variantes</span
+                  ><span class="detail-val" id="d-variants"></span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="detail-section">
+                <div class="detail-section-title">🗂️ Catégorie Shopify</div>
+                <div class="detail-row">
+                  <span class="detail-key">Taxonomie</span
+                  ><span class="detail-val" id="d-category"></span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="detail-section">
+                <div class="detail-section-title">🎨 Couleur</div>
+                <div class="detail-row">
+                  <span class="detail-key">Option couleur</span
+                  ><span class="detail-val" id="d-color"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Metaobject lié</span
+                  ><span class="detail-val" id="d-color-meta"></span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="detail-section">
+                <div class="detail-section-title">🔍 SEO</div>
+                <div class="detail-row">
+                  <span class="detail-key">Titre SEO</span
+                  ><span
+                    class="detail-val"
+                    id="d-seo-title"
+                    style="max-width: 200px; text-align: right; font-size: 11px"
+                  ></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Meta description</span
+                  ><span
+                    class="detail-val"
+                    id="d-seo-meta"
+                    style="
+                      max-width: 200px;
+                      text-align: right;
+                      font-size: 11px;
+                      color: var(--muted);
+                    "
+                  ></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Score SEO</span
+                  ><span class="detail-val" id="d-seo-score"></span>
+                </div>
+              </div>
+              <div class="divider"></div>
+              <div class="detail-section">
+                <div class="detail-section-title">⭐ Avis clients</div>
+                <div class="detail-row">
+                  <span class="detail-key">Note globale</span
+                  ><span class="detail-val" id="d-note"></span>
+                </div>
+                <div class="detail-row">
+                  <span class="detail-key">Avis injectés</span
+                  ><span class="detail-val" id="d-reviews"></span>
+                </div>
+                <div
+                  id="d-reviews-bar"
+                  class="progress-mini"
+                  style="margin-bottom: 4px"
+                >
+                  <div
+                    class="progress-mini-fill"
+                    id="d-reviews-fill"
+                    style="width: 0%"
+                  ></div>
+                </div>
+              </div>
+              <div style="margin-top: 16px">
+                <a id="d-shopify-link" href="#" target="_blank">
+                  <button
+                    class="btn btn-primary"
+                    style="width: 100%"
+                    onclick="toast('Ouverture Shopify admin…', 'info')"
+                  >
+                    ↗ Voir dans Shopify
+                  </button>
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ COLLECTIONS PAGE ═════════════════════════════════════════════════ -->
+    <div class="page-wrap" id="page-collections">
+      <div class="content">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Collections</div>
+            <div class="section-sub">
+              Gérez vos collections, pages et catégories SEO
+            </div>
+          </div>
+          <button class="btn btn-primary ml-auto" onclick="openCollForm()">
+            + Nouvelle collection
+          </button>
+        </div>
+
+        <div class="coll-layout">
+          <div class="coll-board" id="coll-board"><!-- injected --></div>
+
+          <div class="coll-form-panel" id="coll-form">
+            <div class="coll-form-title" id="coll-form-title">
+              Nouvelle collection
+            </div>
+            <div class="form-grid">
+              <div class="input-group">
+                <label class="input-label">Nom de la collection</label
+                ><input
+                  class="input"
+                  id="cf-name"
+                  placeholder="Ex: Arbre à Chat Maine Coon"
+                />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Catégorie</label>
+                <select class="input" id="cf-cat">
+                  <option value="main">Collection principale</option>
+                  <option value="type">Type</option>
+                  <option value="variation">
+                    Variation (couleur, taille…)
+                  </option>
+                </select>
+              </div>
+              <div class="form-row-2">
+                <div class="input-group">
+                  <label class="input-label">Volume SEO (recherches/mois)</label
+                  ><input
+                    class="input"
+                    id="cf-vol"
+                    type="number"
+                    placeholder="4 400"
+                  />
+                </div>
+                <div class="input-group">
+                  <label class="input-label">Produits</label
+                  ><input
+                    class="input"
+                    id="cf-products"
+                    type="number"
+                    placeholder="18"
+                  />
+                </div>
+              </div>
+              <div class="input-group">
+                <label class="input-label">URL Shopify</label
+                ><input
+                  class="input"
+                  id="cf-url"
+                  placeholder="https://…/collections/arbre-a-chat-maine-coon"
+                />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Tags produits liés</label
+                ><input
+                  class="input"
+                  id="cf-tags"
+                  placeholder="arbre a chat maine coon, gros chat…"
+                />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Générer une page dédiée</label>
+                <div
+                  style="
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                    margin-top: 2px;
+                  "
+                >
+                  <div
+                    class="toggle on"
+                    id="cf-page-toggle"
+                    onclick="this.classList.toggle('on')"
+                  ></div>
+                  <span style="font-size: 13px; color: var(--muted)"
+                    >Créer une page Shopify associée</span
+                  >
+                </div>
+              </div>
+              <div class="flex gap-8 mt-16">
+                <button
+                  class="btn btn-primary"
+                  style="flex: 1"
+                  onclick="saveCollection()"
+                >
+                  Enregistrer
+                </button>
+                <button class="btn btn-ghost" onclick="clearCollForm()">
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ SEO IMAGES PAGE ══════════════════════════════════════════════════ -->
+    <div class="page-wrap" id="page-seo">
+      <div class="content">
+        <div class="section-header">
+          <div>
+            <div class="section-title">SEO Images</div>
+            <div class="section-sub">
+              Paramètres d'optimisation des noms de fichier et alt text
+            </div>
+          </div>
+          <button
+            class="btn btn-primary ml-auto"
+            onclick="
+              toast('Paramètres appliqués à tous les produits', 'success')
+            "
+          >
+            ✓ Appliquer
+          </button>
+        </div>
+
+        <div class="seo-grid">
+          <div>
+            <div class="param-card">
+              <div class="param-title">Template Alt Text</div>
+              <div class="param-desc">
+                Format du texte alternatif injecté sur chaque image produit.
+              </div>
+              <input
+                class="input"
+                value="{{niche}} {{couleur}} – {{titre}} | {{vendor}}"
+                id="alt-template"
+              />
+              <div class="seo-preview-card">
+                <div class="seo-preview-title">Aperçu</div>
+                <div class="seo-example" id="alt-preview">
+                  Arbre à Chat Beige – Arbre à Chat XXL Hamac Bois Beige | Le
+                  Perchoir Du Chat
+                </div>
+                <div style="margin-top: 8px">
+                  <div class="seo-tokens">
+                    Tokens disponibles :
+                    <span>{{niche}}</span><span>{{couleur}}</span
+                    ><span>{{titre}}</span> <span>{{vendor}}</span
+                    ><span>{{handle}}</span><span>{{position}}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="param-card" style="margin-top: 16px">
+              <div class="param-title">Nommage des fichiers</div>
+              <div class="param-desc">
+                Convention de nommage appliquée lors du téléversement ou
+                renommage des images.
+              </div>
+              <input
+                class="input"
+                value="{{handle}}-{{position}}-{{couleur}}.jpg"
+                id="filename-template"
+              />
+              <div class="seo-preview-card">
+                <div class="seo-preview-title">Aperçu</div>
+                <div class="seo-example" id="filename-preview">
+                  arbre-a-chat-xxl-hamac-bois-beige-1-beige.jpg
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 16px">
+            <div class="param-card">
+              <div class="param-title">Options d'optimisation</div>
+              <div class="param-desc">
+                Paramètres appliqués automatiquement sur les images importées.
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-name">Alt text automatique</div>
+                  <div class="toggle-sub">
+                    Injecter l'alt text sur toutes les images
+                  </div>
+                </div>
+                <div
+                  class="toggle on"
+                  onclick="this.classList.toggle('on')"
+                ></div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-name">Renommage des fichiers</div>
+                  <div class="toggle-sub">
+                    Renommer selon le template ci-dessus
+                  </div>
+                </div>
+                <div
+                  class="toggle on"
+                  onclick="this.classList.toggle('on')"
+                ></div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-name">Compression automatique</div>
+                  <div class="toggle-sub">
+                    Réduire le poids des images (&lt;200ko)
+                  </div>
+                </div>
+                <div class="toggle" onclick="this.classList.toggle('on')"></div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-name">Conversion WebP</div>
+                  <div class="toggle-sub">
+                    Convertir JPG/PNG en WebP si supporté
+                  </div>
+                </div>
+                <div class="toggle" onclick="this.classList.toggle('on')"></div>
+              </div>
+              <div class="toggle-row">
+                <div class="toggle-info">
+                  <div class="toggle-name">Image principale uniquement</div>
+                  <div class="toggle-sub">
+                    Appliquer seulement sur la première image
+                  </div>
+                </div>
+                <div class="toggle" onclick="this.classList.toggle('on')"></div>
+              </div>
+            </div>
+
+            <div class="param-card">
+              <div class="param-title">Format prioritaire</div>
+              <div class="param-desc">
+                Format d'image préféré lors de l'optimisation.
+              </div>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap">
+                <div class="lang-btn active" onclick="selectFormat(this)">
+                  WebP
+                </div>
+                <div class="lang-btn" onclick="selectFormat(this)">AVIF</div>
+                <div class="lang-btn" onclick="selectFormat(this)">JPEG</div>
+                <div class="lang-btn" onclick="selectFormat(this)">PNG</div>
+              </div>
+            </div>
+
+            <div class="param-card">
+              <div class="param-title">Statistiques</div>
+              <div
+                style="
+                  display: flex;
+                  flex-direction: column;
+                  gap: 8px;
+                  margin-top: 4px;
+                "
+              >
+                <div class="flex gap-8">
+                  <span style="font-size: 13px; color: var(--muted); flex: 1"
+                    >Produits avec alt text</span
+                  ><span style="font-size: 13px; font-weight: 600"
+                    >112 / 120</span
+                  >
+                </div>
+                <div class="flex gap-8">
+                  <span style="font-size: 13px; color: var(--muted); flex: 1"
+                    >Alt text manquants</span
+                  ><span
+                    style="
+                      font-size: 13px;
+                      font-weight: 600;
+                      color: var(--warn);
+                    "
+                    >8</span
+                  >
+                </div>
+                <div class="flex gap-8">
+                  <span style="font-size: 13px; color: var(--muted); flex: 1"
+                    >Nom fichier optimisé</span
+                  ><span
+                    style="font-size: 13px; font-weight: 600; color: var(--red)"
+                    >42 à renommer</span
+                  >
+                </div>
+                <button
+                  class="btn btn-primary mt-16"
+                  onclick="toast('Application des alt text en cours…', 'info')"
+                >
+                  ⚡ Appliquer les manquants
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ POLITIQUE PAGE ═══════════════════════════════════════════════════ -->
+    <div class="page-wrap" id="page-politique">
+      <div class="content">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Politiques</div>
+            <div class="section-sub">
+              Templates pré-remplis avec vos informations légales
+            </div>
+          </div>
+        </div>
+
+        <div class="politic-layout">
+          <div class="card" style="padding: 8px">
+            <div class="politic-list">
+              <div
+                class="politic-item active"
+                onclick="selectPolitic(this, 'retour')"
+              >
+                <span class="politic-icon">↩</span>
+                <span class="politic-name">Politique de retour</span>
+                <span class="politic-status"
+                  ><span class="badge badge-green">Injectée</span></span
+                >
+              </div>
+              <div class="politic-item" onclick="selectPolitic(this, 'cgv')">
+                <span class="politic-icon">📋</span>
+                <span class="politic-name">CGV</span>
+                <span class="politic-status"
+                  ><span class="badge badge-green">Injectée</span></span
+                >
+              </div>
+              <div
+                class="politic-item"
+                onclick="selectPolitic(this, 'confidentialite')"
+              >
+                <span class="politic-icon">🔒</span>
+                <span class="politic-name">Confidentialité</span>
+                <span class="politic-status"
+                  ><span class="badge badge-amber">À injecter</span></span
+                >
+              </div>
+              <div
+                class="politic-item"
+                onclick="selectPolitic(this, 'mentions')"
+              >
+                <span class="politic-icon">⚖️</span>
+                <span class="politic-name">Mentions légales</span>
+                <span class="politic-status"
+                  ><span class="badge badge-amber">À injecter</span></span
+                >
+              </div>
+              <div
+                class="politic-item"
+                onclick="selectPolitic(this, 'livraison')"
+              >
+                <span class="politic-icon">🚚</span>
+                <span class="politic-name">Livraison</span>
+                <span class="politic-status"
+                  ><span class="badge badge-green">Injectée</span></span
+                >
+              </div>
+              <div
+                class="politic-item"
+                onclick="selectPolitic(this, 'cookies')"
+              >
+                <span class="politic-icon">🍪</span>
+                <span class="politic-name">Cookies</span>
+                <span class="politic-status"
+                  ><span class="badge badge-red">Manquante</span></span
+                >
+              </div>
+            </div>
+          </div>
+
+          <div class="politic-editor">
+            <div class="politic-editor-header">
+              <span id="politic-icon" style="font-size: 20px">↩</span>
+              <div>
+                <div
+                  style="font-size: 15px; font-weight: 700"
+                  id="politic-title"
+                >
+                  Politique de retour
+                </div>
+                <div style="font-size: 12px; color: var(--muted)">
+                  Dernière injection : 24 mars 2026
+                </div>
+              </div>
+              <div class="ml-auto flex gap-8">
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onclick="toast('Template copié', 'info')"
+                >
+                  📋 Copier
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="openModal()">
+                  ✏️ Modifier
+                </button>
+              </div>
+            </div>
+            <div class="politic-editor-body">
+              <div class="politic-preview" id="politic-preview">
+                <h3>Politique de retour — Le Perchoir Du Chat</h3>
+                <p>
+                  Nous nous engageons à vous offrir une expérience d'achat
+                  sereine. Si vous n'êtes pas entièrement satisfait de votre
+                  commande, vous pouvez nous la retourner dans les conditions
+                  suivantes.
+                </p>
+                <h3>Délai de retour</h3>
+                <p>
+                  Vous disposez de <strong>30 jours</strong> à compter de la
+                  réception de votre commande pour exercer votre droit de
+                  retour.
+                </p>
+                <h3>Conditions</h3>
+                <ul>
+                  <li>
+                    Le produit doit être retourné dans son état d'origine, non
+                    utilisé et dans son emballage d'origine.
+                  </li>
+                  <li>
+                    Les frais de retour sont à la charge du client, sauf en cas
+                    de produit défectueux.
+                  </li>
+                  <li>
+                    Un remboursement sera effectué sous
+                    <strong>5 à 10 jours ouvrés</strong> après réception du
+                    retour.
+                  </li>
+                </ul>
+                <h3>Contact</h3>
+                <p>
+                  Pour initier un retour, contactez-nous à
+                  <span class="politic-var"
+                    >contact@le-perchoir-du-chat.com</span
+                  >
+                  ou au <span class="politic-var">+33 7 83 70 46 19</span>.
+                </p>
+                <p>
+                  <strong>Le Perchoir Du Chat</strong><br /><span
+                    class="politic-var"
+                    >11 rue Jean Zay, 95310 Saint Ouen l'Aumône</span
+                  ><br />SIRET :
+                  <span class="politic-var">983 251 810 00013</span>
+                </p>
+              </div>
+            </div>
+            <div class="inject-bar">
+              <div style="font-size: 12px; color: var(--muted)">
+                Page Shopify : <strong>/policies/refund-policy</strong>
+              </div>
+              <button class="btn btn-primary ml-auto" onclick="injectPolitic()">
+                <span
+                  id="inject-spinner"
+                  style="display: none"
+                  class="spinner"
+                ></span>
+                ↗ Injecter dans Shopify
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ CONFIG PAGE ══════════════════════════════════════════════════════ -->
+    <div class="page-wrap" id="page-config">
+      <div class="content">
+        <div class="section-header">
+          <div>
+            <div class="section-title">Configuration</div>
+            <div class="section-sub">
+              Paramètres de la boutique
+              <strong id="config-shop-name">Le Perchoir Du Chat</strong>
+            </div>
+          </div>
+          <button class="btn btn-primary ml-auto" onclick="saveConfig()">
+            💾 Sauvegarder
+          </button>
+        </div>
+
+        <div class="config-grid">
+          <div class="config-card">
+            <div class="config-card-header">
+              <span class="config-card-icon">🌐</span>
+              <div class="config-card-title">Langue & région</div>
+            </div>
+            <div class="config-card-body">
+              <div class="input-group">
+                <label class="input-label">Langue du contenu généré</label>
+                <div class="lang-selector">
+                  <div class="lang-btn active" onclick="selectLang(this, 'fr')">
+                    🇫🇷 Français
+                  </div>
+                  <div class="lang-btn" onclick="selectLang(this, 'en')">
+                    🇬🇧 English
+                  </div>
+                  <div class="lang-btn" onclick="selectLang(this, 'es')">
+                    🇪🇸 Español
+                  </div>
+                </div>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Devise</label>
+                <select class="input">
+                  <option>EUR — €</option>
+                  <option>USD — $</option>
+                  <option>GBP — £</option>
+                </select>
+              </div>
+              <div class="input-group">
+                <label class="input-label">Fuseau horaire</label>
+                <select class="input">
+                  <option>Europe/Paris (UTC+1)</option>
+                  <option>UTC</option>
+                  <option>America/New_York</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <div class="config-card">
+            <div class="config-card-header">
+              <span class="config-card-icon">🔑</span>
+              <div class="config-card-title">Connexion Shopify</div>
+            </div>
+            <div class="config-card-body">
+              <div class="input-group">
+                <label class="input-label">Store URL</label>
+                <input
+                  class="input"
+                  value="5r2rfg-iv.myshopify.com"
+                  id="cfg-store-url"
+                />
+              </div>
+              <div class="input-group token-field">
+                <label class="input-label">Access Token</label>
+                <input
+                  class="input"
+                  value="shpat_••••••••••••••••••••••••••••"
+                  id="cfg-token"
+                  type="password"
+                />
+                <span class="token-reveal" onclick="toggleToken()"
+                  >Afficher</span
+                >
+              </div>
+              <div class="input-group">
+                <label class="input-label">Version API</label>
+                <select class="input">
+                  <option>2026-01 (recommandée)</option>
+                  <option>2025-10</option>
+                </select>
+              </div>
+              <button
+                class="btn btn-ghost btn-sm"
+                style="margin-top: 4px"
+                onclick="testConnection()"
+              >
+                🔌 Tester la connexion
+              </button>
+            </div>
+          </div>
+
+          <div class="config-card config-full">
+            <div class="config-card-header">
+              <span class="config-card-icon">⚖️</span>
+              <div class="config-card-title">Informations légales</div>
+              <span
+                style="font-size: 12px; color: var(--muted); margin-left: 8px"
+                >Utilisées dans les politiques et les emails</span
+              >
+            </div>
+            <div
+              class="config-card-body"
+              style="
+                display: grid;
+                grid-template-columns: 1fr 1fr 1fr;
+                gap: 12px;
+              "
+            >
+              <div class="input-group">
+                <label class="input-label">Nom de l'entreprise</label
+                ><input class="input" value="Le Perchoir Du Chat" />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Email de contact</label
+                ><input
+                  class="input"
+                  value="contact@le-perchoir-du-chat.com"
+                  type="email"
+                />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Téléphone</label
+                ><input class="input" value="+33 7 83 70 46 19" />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Adresse</label
+                ><input
+                  class="input"
+                  value="11 rue Jean Zay, 95310 Saint Ouen l'Aumône"
+                />
+              </div>
+              <div class="input-group">
+                <label class="input-label">SIRET</label
+                ><input class="input" value="983 251 810 00013" />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Site web</label
+                ><input class="input" value="https://le-perchoir-du-chat.com" />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Délai de traitement commande</label
+                ><input class="input" value="1 à 2 jours ouvrés" />
+              </div>
+              <div class="input-group">
+                <label class="input-label">Délai de livraison</label
+                ><input class="input" value="3 à 8 jours ouvrés" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ MODAL EDIT POLITIC ════════════════════════════════════════════════ -->
+    <div class="overlay" id="overlay" onclick="closeModal()">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h3>Modifier la politique</h3>
+          <p>
+            Les variables en
+            <span style="color: var(--primary); font-weight: 600">violet</span>
+            sont remplies automatiquement depuis votre configuration.
+          </p>
+        </div>
+        <div class="modal-body">
+          <textarea
+            class="input"
+            style="
+              height: 200px;
+              resize: vertical;
+              font-size: 12px;
+              line-height: 1.6;
+            "
+            id="modal-editor"
+          >
+Politique de retour — Le Perchoir Du Chat
+
+Vous disposez de 30 jours pour retourner un article...</textarea
+          >
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" onclick="closeModal()">Annuler</button>
+          <button
+            class="btn btn-primary"
+            onclick="
+              closeModal();
+              toast('Modifications sauvegardées', 'success');
+            "
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toasts" id="toasts"></div>
+
+    <script>
+      // ══ DATA ═══════════════════════════════════════════════════
+      const COLORS = {
+        Beige: "#EAD8AB",
+        Blanc: "#F0F0F0",
+        Noir: "#1A1A1A",
+        Gris: "#808080",
+        "Gris foncé": "#555",
+        "Gris clair": "#C0C0C0",
+        Rose: "#FFC0CB",
+        Vert: "#05AA3D",
+        Violet: "#A54DCF",
+        Marron: "#9A5630",
+        Bleu: "#2B6CB0",
+        Bois: "#C4A265",
+      };
+
+      const EMOJIS = [
+        "🐱",
+        "🌿",
+        "🏔️",
+        "🎋",
+        "🌸",
+        "🌲",
+        "🌙",
+        "⭐",
+        "🎪",
+        "🏡",
+        "🌺",
+        "🌟",
+      ];
+
+      const PRODUCTS = [
+        {
+          id: 1,
+          title: "Arbre à Chat XXL Hamac Bois Beige — Tanière",
+          handle: "arbre-a-chat-xxl-hamac-bois-beige-taniere",
+          price: "599.99",
+          compare: "0",
+          color: "Beige",
+          status: "active",
+          seo: 92,
+          reviews: 8,
+          note: "4.8",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 2,
+          title: "Arbre à Chat Design Gris Clair Mural — Stromboli",
+          handle: "arbre-a-chat-design-gris-clair-stromboli",
+          price: "299.99",
+          compare: "0",
+          color: "Gris clair",
+          status: "active",
+          seo: 88,
+          reviews: 8,
+          note: "4.7",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 3,
+          title: "Arbre à Chat Maine Coon Noir — Dolomite",
+          handle: "arbre-a-chat-maine-coon-noir-dolomite",
+          price: "449.99",
+          compare: "549.99",
+          color: "Noir",
+          status: "active",
+          seo: 95,
+          reviews: 8,
+          note: "4.9",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 4,
+          title: "Arbre à Chat Fleur Rose Pastel — Nid",
+          handle: "arbre-a-chat-fleur-rose-nid",
+          price: "199.99",
+          compare: "249.99",
+          color: "Rose",
+          status: "active",
+          seo: 71,
+          reviews: 0,
+          note: "—",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 5,
+          title: "Arbre à Chat Cactus Vert — Cairn",
+          handle: "arbre-a-chat-cactus-vert-cairn",
+          price: "239.99",
+          compare: "0",
+          color: "Vert",
+          status: "active",
+          seo: 84,
+          reviews: 0,
+          note: "—",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 6,
+          title: "Griffoir Sisal Blanc Grande Hauteur — Ventoux",
+          handle: "griffoir-sisal-blanc-ventoux",
+          price: "59.99",
+          compare: "79.99",
+          color: "Blanc",
+          status: "active",
+          seo: 76,
+          reviews: 6,
+          note: "4.6",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 7,
+          title: "Arbre à Chat Bois Marron Rustique — Atlas",
+          handle: "arbre-a-chat-bois-marron-atlas",
+          price: "349.99",
+          compare: "0",
+          color: "Marron",
+          status: "active",
+          seo: 89,
+          reviews: 8,
+          note: "4.8",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 8,
+          title: "Tour Chat Design Gris Foncé — K2",
+          handle: "tour-chat-design-gris-fonce-k2",
+          price: "399.99",
+          compare: "499.99",
+          color: "Gris foncé",
+          status: "active",
+          seo: 91,
+          reviews: 8,
+          note: "4.9",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 9,
+          title: "Niche Chat Igloo Rose Douillet — Refuge",
+          handle: "niche-chat-igloo-rose-refuge",
+          price: "129.99",
+          compare: "0",
+          color: "Rose",
+          status: "active",
+          seo: 62,
+          reviews: 0,
+          note: "—",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 10,
+          title: "Arbre à Chat Violet Design — Belvédère",
+          handle: "arbre-a-chat-violet-belvedere",
+          price: "279.99",
+          compare: "339.99",
+          color: "Violet",
+          status: "active",
+          seo: 77,
+          reviews: 3,
+          note: "4.7",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 11,
+          title: "Arbre à Chat Bois Beige Hamac XXL — Olympe",
+          handle: "arbre-a-chat-bois-beige-hamac-xxl-olympe",
+          price: "489.99",
+          compare: "0",
+          color: "Beige",
+          status: "active",
+          seo: 93,
+          reviews: 8,
+          note: "4.8",
+          category: "Cat Trees & Towers",
+        },
+        {
+          id: 12,
+          title: "Tunnel Interactif Gris Pliant — Colline",
+          handle: "tunnel-interactif-gris-colline",
+          price: "39.99",
+          compare: "0",
+          color: "Gris",
+          status: "draft",
+          seo: 45,
+          reviews: 0,
+          note: "—",
+          category: "Cat Trees & Towers",
+        },
+      ];
+
+      const COLLECTIONS_DATA = [
+        {
+          name: "Arbre à Chat",
+          cat: "main",
+          vol: 74000,
+          products: 120,
+          url: "collections/arbre-a-chat",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat Maine Coon",
+          cat: "type",
+          vol: 4400,
+          products: 18,
+          url: "collections/arbre-a-chat-maine-coon",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Design",
+          cat: "type",
+          vol: 3600,
+          products: 22,
+          url: "collections/arbre-a-chat-design",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Mural",
+          cat: "type",
+          vol: 2900,
+          products: 15,
+          url: "collections/arbre-a-chat-mural",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat Fleur",
+          cat: "type",
+          vol: 1300,
+          products: 9,
+          url: "collections/arbre-a-chat-fleur",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat Cactus",
+          cat: "type",
+          vol: 590,
+          products: 6,
+          url: "collections/arbre-a-chat-cactus",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Hamac",
+          cat: "type",
+          vol: 390,
+          products: 8,
+          url: "collections/arbre-a-chat-hamac",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat XXL",
+          cat: "variation",
+          vol: 1900,
+          products: 28,
+          url: "collections/arbre-a-chat-xxl",
+          status: "generated",
+        },
+        {
+          name: "Petit Arbre à Chat",
+          cat: "variation",
+          vol: 1300,
+          products: 19,
+          url: "collections/petit-arbre-a-chat",
+          status: "pending",
+        },
+        {
+          name: "Grand Arbre à Chat",
+          cat: "variation",
+          vol: 880,
+          products: 14,
+          url: "collections/grand-arbre-a-chat",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat Beige",
+          cat: "variation",
+          vol: 1000,
+          products: 31,
+          url: "collections/arbre-a-chat-beige",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Noir",
+          cat: "variation",
+          vol: 390,
+          products: 24,
+          url: "collections/arbre-a-chat-noir",
+          status: "generated",
+        },
+        {
+          name: "Arbre à Chat Blanc",
+          cat: "variation",
+          vol: 320,
+          products: 17,
+          url: "collections/arbre-a-chat-blanc",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Rose",
+          cat: "variation",
+          vol: 260,
+          products: 11,
+          url: "collections/arbre-a-chat-rose",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Gris",
+          cat: "variation",
+          vol: 260,
+          products: 19,
+          url: "collections/arbre-a-chat-gris",
+          status: "pending",
+        },
+        {
+          name: "Arbre à Chat Vert",
+          cat: "variation",
+          vol: 140,
+          products: 7,
+          url: "collections/arbre-a-chat-vert",
+          status: "generated",
+        },
+      ];
+
+      const POLITICS = {
+        retour: {
+          icon: "↩",
+          title: "Politique de retour",
+          page: "/policies/refund-policy",
+          content:
+            '<h3>Politique de retour — Le Perchoir Du Chat</h3><p>Nous nous engageons à vous offrir une expérience d\'achat sereine.</p><h3>Délai de retour</h3><p>Vous disposez de <strong>30 jours</strong> à compter de la réception.</p><h3>Conditions</h3><ul><li>Produit dans son état d\'origine, non utilisé.</li><li>Frais de retour à la charge du client sauf défaut.</li><li>Remboursement sous <strong>5 à 10 jours ouvrés</strong>.</li></ul><h3>Contact</h3><p>Email : <span class="politic-var">contact@le-perchoir-du-chat.com</span><br>Tél : <span class="politic-var">+33 7 83 70 46 19</span></p>',
+        },
+        cgv: {
+          icon: "📋",
+          title: "Conditions Générales de Vente",
+          page: "/policies/terms-of-service",
+          content:
+            '<h3>CGV — Le Perchoir Du Chat</h3><p>Les présentes CGV régissent les ventes réalisées sur <span class="politic-var">le-perchoir-du-chat.com</span> par la société <span class="politic-var">Le Perchoir Du Chat</span> (SIRET : <span class="politic-var">983 251 810 00013</span>), sise <span class="politic-var">11 rue Jean Zay, 95310 Saint Ouen l\'Aumône</span>.</p><h3>Prix</h3><p>Les prix sont indiqués en euros TTC. Nous nous réservons le droit de modifier nos prix à tout moment.</p><h3>Livraison</h3><p>Délai de préparation : <span class="politic-var">1 à 2 jours ouvrés</span>. Livraison estimée : <span class="politic-var">3 à 8 jours ouvrés</span>.</p>',
+        },
+        confidentialite: {
+          icon: "🔒",
+          title: "Politique de confidentialité",
+          page: "/policies/privacy-policy",
+          content:
+            '<h3>Confidentialité — Le Perchoir Du Chat</h3><p>La protection de vos données personnelles est une priorité pour <span class="politic-var">Le Perchoir Du Chat</span>.</p><h3>Données collectées</h3><ul><li>Nom, prénom, adresse de livraison</li><li>Adresse email et numéro de téléphone</li><li>Données de navigation (cookies)</li></ul><h3>Contact DPO</h3><p><span class="politic-var">contact@le-perchoir-du-chat.com</span></p>',
+        },
+        mentions: {
+          icon: "⚖️",
+          title: "Mentions légales",
+          page: "/pages/mentions-legales",
+          content:
+            '<h3>Mentions légales</h3><p>Conformément aux dispositions de la loi n° 2004-575 du 21 juin 2004 :</p><p><strong>Éditeur :</strong> <span class="politic-var">Le Perchoir Du Chat</span><br>SIRET : <span class="politic-var">983 251 810 00013</span><br>Adresse : <span class="politic-var">11 rue Jean Zay, 95310 Saint Ouen l\'Aumône</span><br>Email : <span class="politic-var">contact@le-perchoir-du-chat.com</span></p>',
+        },
+        livraison: {
+          icon: "🚚",
+          title: "Politique de livraison",
+          page: "/policies/shipping-policy",
+          content:
+            '<h3>Livraison — Le Perchoir Du Chat</h3><p>Toutes les commandes sont expédiées depuis notre entrepôt en France.</p><h3>Délais</h3><ul><li>Traitement : <span class="politic-var">1 à 2 jours ouvrés</span></li><li>Livraison : <span class="politic-var">3 à 8 jours ouvrés</span></li></ul><h3>Suivi</h3><p>Un email de suivi vous sera envoyé à <span class="politic-var">contact@le-perchoir-du-chat.com</span>.</p>',
+        },
+        cookies: {
+          icon: "🍪",
+          title: "Politique cookies",
+          page: "/pages/cookies",
+          content:
+            '<h3>Cookies — Le Perchoir Du Chat</h3><p>Notre site <span class="politic-var">le-perchoir-du-chat.com</span> utilise des cookies pour améliorer votre expérience de navigation.</p><h3>Types de cookies</h3><ul><li>Cookies essentiels (session, panier)</li><li>Cookies analytiques (Google Analytics)</li><li>Cookies marketing (retargeting)</li></ul>',
+        },
+      };
+
+      // ══ STATE ════════════════════════════════════════════════
+      let currentPage = "products";
+      let selectedProduct = null;
+      let filteredProducts = [...PRODUCTS];
+      let activeColorFilter = "";
+      let collectionsData = [...COLLECTIONS_DATA];
+
+      // ══ NAVIGATION ═══════════════════════════════════════════
+      function navigate(page) {
+        document
+          .querySelectorAll(".page-wrap")
+          .forEach((p) => p.classList.remove("active"));
+        document
+          .querySelectorAll(".nav-tab")
+          .forEach((t) => t.classList.remove("active"));
+        document.getElementById("page-" + page).classList.add("active");
+        document.getElementById("tab-" + page).classList.add("active");
+        currentPage = page;
+        if (page === "collections") renderCollections();
+      }
+
+      // ══ SHOP SWITCHER ═════════════════════════════════════════
+      function toggleShop() {
+        const sw = document.getElementById("shopSwitcher");
+        const dd = document.getElementById("shopDropdown");
+        sw.classList.toggle("open");
+        dd.classList.toggle("open");
+      }
+      function switchShop(id, name, url, emoji, grad) {
+        document.getElementById("shopName").textContent = name;
+        document.getElementById("shopUrl").textContent = url;
+        document.getElementById("shopAvatar").textContent = emoji;
+        document.getElementById("shopAvatar").style.background = grad;
+        document.getElementById("config-shop-name").textContent = name;
+        document.getElementById("products-count").textContent =
+          "120 produits dans la boutique";
+        document
+          .querySelectorAll(".shop-option")
+          .forEach((o) => o.classList.remove("active"));
+        event.currentTarget.classList.add("active");
+        toggleShop();
+        toast("Boutique : " + name, "success");
+      }
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".shop-switcher"))
+          (document.getElementById("shopSwitcher").classList.remove("open"),
+            document.getElementById("shopDropdown").classList.remove("open"));
+      });
+
+      // ══ PRODUCTS ══════════════════════════════════════════════
+      function renderProducts() {
+        const list = document.getElementById("product-list");
+        const header = list.querySelector(".product-row.header");
+        list.innerHTML = "";
+        list.appendChild(header);
+        filteredProducts.forEach((p) => {
+          const row = document.createElement("div");
+          row.className =
+            "product-row" + (selectedProduct?.id === p.id ? " active" : "");
+          row.onclick = () => openDetail(p);
+          const col = COLORS[p.color] || "#ccc";
+          const emoji = EMOJIS[p.id % EMOJIS.length];
+          const seoClass =
+            p.seo >= 80
+              ? "badge-green"
+              : p.seo >= 60
+                ? "badge-amber"
+                : "badge-red";
+          row.innerHTML = `
+      <div class="product-thumb" style="background:${col}18;font-size:18px">${emoji}</div>
+      <div class="product-title-cell">
+        <div class="title">${p.title}</div>
+        <div class="handle">${p.handle}</div>
+      </div>
+      <div><span class="color-dot"><span class="dot" style="background:${col}"></span>${p.color}</span></div>
+      <div style="font-size:13px;font-weight:600">€${p.price}</div>
+      <div><span class="badge ${p.status === "active" ? "badge-green" : "badge-amber"}">${p.status === "active" ? "Actif" : "Brouillon"}</span></div>
+      <div><span class="badge ${seoClass}">${p.seo}</span></div>`;
+          list.appendChild(row);
+        });
+      }
+
+      function openDetail(p) {
+        selectedProduct = p;
+        const col = COLORS[p.color] || "#eee";
+        const emoji = EMOJIS[p.id % EMOJIS.length];
+        const hero = document.getElementById("detail-hero");
+        hero.style.background = `linear-gradient(135deg, ${col}44, ${col}22)`;
+        hero.childNodes[0].nodeType === 3
+          ? hero.insertAdjacentHTML(
+              "afterbegin",
+              `<span style="font-size:56px">${emoji}</span>`,
+            )
+          : hero.querySelector("span") &&
+            (hero.querySelector("span").textContent = emoji);
+
+        document.getElementById("d-name").textContent = p.title;
+        document.getElementById("d-handle").textContent = "/" + p.handle;
+        document.getElementById("d-price").innerHTML =
+          `<strong>€${p.price}</strong>`;
+        document.getElementById("d-compare").innerHTML =
+          p.compare !== "0"
+            ? `<span style="color:var(--muted);text-decoration:line-through">€${p.compare}</span>`
+            : '<span style="color:var(--muted)">—</span>';
+        document.getElementById("d-variants").textContent = "1 variante";
+        document.getElementById("d-category").innerHTML =
+          `<span class="badge badge-purple">${p.category}</span>`;
+        document.getElementById("d-color").innerHTML =
+          `<span class="color-dot"><span class="dot" style="background:${col}"></span>${p.color}</span>`;
+        document.getElementById("d-color-meta").innerHTML =
+          `<span class="badge badge-green">✓ Lié</span>`;
+        document.getElementById("d-seo-title").textContent =
+          p.title + " | Le Perchoir Du Chat";
+        document.getElementById("d-seo-meta").textContent =
+          "Découvrez notre " +
+          p.title.toLowerCase() +
+          ". Livraison rapide 3-8j. Qualité premium.";
+        const seoClass =
+          p.seo >= 80
+            ? "badge-green"
+            : p.seo >= 60
+              ? "badge-amber"
+              : "badge-red";
+        document.getElementById("d-seo-score").innerHTML =
+          `<span class="badge ${seoClass}">${p.seo} / 100</span>`;
+        document.getElementById("d-note").innerHTML =
+          p.note !== "—"
+            ? `<span style="color:#D97706">★ ${p.note}</span>`
+            : '<span style="color:var(--muted)">—</span>';
+        document.getElementById("d-reviews").textContent =
+          p.reviews + " / 8 avis";
+        document.getElementById("d-reviews-fill").style.width =
+          (p.reviews / 8) * 100 + "%";
+
+        document.getElementById("detail-panel").classList.add("open");
+        document
+          .getElementById("products-layout")
+          .classList.remove("no-detail");
+        renderProducts();
+      }
+
+      function closeDetail() {
+        selectedProduct = null;
+        document.getElementById("detail-panel").classList.remove("open");
+        document.getElementById("products-layout").classList.add("no-detail");
+        renderProducts();
+      }
+
+      function filterProducts(val) {
+        const lv = val.toLowerCase();
+        filteredProducts = PRODUCTS.filter(
+          (p) =>
+            p.title.toLowerCase().includes(lv) ||
+            p.handle.includes(lv) ||
+            p.color.toLowerCase().includes(lv),
+        ).filter((p) => !activeColorFilter || p.color === activeColorFilter);
+        renderProducts();
+      }
+
+      function filterByStatus(val) {
+        filteredProducts = PRODUCTS.filter(
+          (p) => !val || p.status === val,
+        ).filter((p) => !activeColorFilter || p.color === activeColorFilter);
+        renderProducts();
+      }
+
+      function filterColor(color) {
+        activeColorFilter = color;
+        document.querySelectorAll(".filter-chips .chip").forEach((c, i) => {
+          c.classList.toggle(
+            "active",
+            (!color && i === 0) ||
+              (color && c.textContent.trim().includes(color)),
+          );
+        });
+        filteredProducts = PRODUCTS.filter((p) => !color || p.color === color);
+        const q = document.getElementById("search-input").value;
+        if (q)
+          filteredProducts = filteredProducts.filter((p) =>
+            p.title.toLowerCase().includes(q.toLowerCase()),
+          );
+        renderProducts();
+      }
+
+      // ══ COLLECTIONS ═══════════════════════════════════════════
+      function renderCollections() {
+        const board = document.getElementById("coll-board");
+        const groups = [
+          {
+            key: "main",
+            label: "Collection principale",
+            color: "#F59E0B",
+            badge: "badge-amber",
+          },
+          {
+            key: "type",
+            label: "Collections par type",
+            color: "var(--primary)",
+            badge: "badge-purple",
+          },
+          {
+            key: "variation",
+            label: "Collections par variation",
+            color: "#06B6D4",
+            badge: "badge-green",
+          },
+        ];
+        board.innerHTML = "";
+        groups.forEach((g) => {
+          const items = collectionsData.filter((c) => c.cat === g.key);
+          const group = document.createElement("div");
+          group.innerHTML = `<div class="coll-group-title"><span style="width:8px;height:8px;border-radius:50%;background:${g.color};flex-shrink:0;display:inline-block"></span>${g.label} <span style="font-size:11px;color:var(--muted2)">(${items.length})</span></div>`;
+          const grid = document.createElement("div");
+          grid.className = "coll-grid";
+          items.forEach((c) => {
+            const card = document.createElement("div");
+            card.className = `coll-card ${c.cat}`;
+            const volFmt =
+              c.vol >= 1000 ? (c.vol / 1000).toFixed(1) + "k" : c.vol;
+            card.innerHTML = `
+        <div class="flex gap-8" style="margin-bottom:6px">
+          <span class="badge ${g.badge}" style="font-size:10px">${c.cat === "main" ? "Principale" : c.cat === "type" ? "Type" : "Variation"}</span>
+          <span class="badge ${c.status === "generated" ? "badge-green" : "badge-gray"}" style="font-size:10px;margin-left:auto">${c.status === "generated" ? "✓ Générée" : "À générer"}</span>
+        </div>
+        <div class="coll-card-name">${c.name}</div>
+        <div class="coll-card-url">${c.url}</div>
+        <div class="coll-card-stats">
+          <div class="coll-stat"><div class="coll-stat-val">${volFmt}</div><div class="coll-stat-lbl">rech/mois</div></div>
+          <div class="coll-stat" style="margin-left:16px"><div class="coll-stat-val">${c.products}</div><div class="coll-stat-lbl">produits</div></div>
+        </div>`;
+            card.onclick = () => {
+              document.getElementById("cf-name").value = c.name;
+              document.getElementById("cf-url").value =
+                "https://le-perchoir-du-chat.com/" + c.url;
+              document.getElementById("cf-vol").value = c.vol;
+              document.getElementById("cf-products").value = c.products;
+              document.getElementById("coll-form-title").textContent =
+                "Modifier · " + c.name;
+            };
+            grid.appendChild(card);
+          });
+          const addCard = document.createElement("div");
+          addCard.className = "coll-add-card";
+          addCard.innerHTML = `<div class="icon">+</div><div>Ajouter</div>`;
+          addCard.onclick = openCollForm;
+          grid.appendChild(addCard);
+          group.appendChild(grid);
+          board.appendChild(group);
+        });
+      }
+
+      function openCollForm() {
+        clearCollForm();
+        document.getElementById("cf-name").focus();
+      }
+
+      function clearCollForm() {
+        ["cf-name", "cf-vol", "cf-products", "cf-url", "cf-tags"].forEach(
+          (id) => (document.getElementById(id).value = ""),
+        );
+        document.getElementById("coll-form-title").textContent =
+          "Nouvelle collection";
+      }
+
+      function saveCollection() {
+        const name = document.getElementById("cf-name").value.trim();
+        if (!name) {
+          toast("Entrez un nom de collection", "warn");
+          return;
+        }
+        const cat = document.getElementById("cf-cat").value;
+        const vol = parseInt(document.getElementById("cf-vol").value) || 0;
+        const products =
+          parseInt(document.getElementById("cf-products").value) || 0;
+        const url = document
+          .getElementById("cf-url")
+          .value.replace("https://le-perchoir-du-chat.com/", "");
+        const exists = collectionsData.findIndex((c) => c.name === name);
+        if (exists >= 0)
+          collectionsData[exists] = {
+            ...collectionsData[exists],
+            cat,
+            vol,
+            products,
+            url,
+          };
+        else
+          collectionsData.push({
+            name,
+            cat,
+            vol,
+            products,
+            url:
+              url || "collections/" + name.toLowerCase().replace(/\s+/g, "-"),
+            status: "pending",
+          });
+        renderCollections();
+        clearCollForm();
+        toast(
+          "Collection " + (exists >= 0 ? "mise à jour" : "ajoutée"),
+          "success",
+        );
+      }
+
+      // ══ SEO IMAGES ════════════════════════════════════════════
+      document.addEventListener("DOMContentLoaded", () => {
+        document
+          .getElementById("alt-template")
+          ?.addEventListener("input", function () {
+            const tpl = this.value
+              .replace("{{niche}}", "Arbre à Chat")
+              .replace("{{couleur}}", "Beige")
+              .replace("{{titre}}", "Arbre à Chat XXL Hamac Bois Beige")
+              .replace("{{vendor}}", "Le Perchoir Du Chat")
+              .replace("{{handle}}", "arbre-a-chat-xxl-hamac-bois-beige")
+              .replace("{{position}}", "1");
+            document.getElementById("alt-preview").textContent = tpl;
+          });
+        document
+          .getElementById("filename-template")
+          ?.addEventListener("input", function () {
+            const tpl = this.value
+              .replace("{{handle}}", "arbre-a-chat-xxl-hamac-bois-beige")
+              .replace("{{position}}", "1")
+              .replace("{{couleur}}", "beige");
+            document.getElementById("filename-preview").textContent = tpl;
+          });
+        renderProducts();
+        renderCollections();
+      });
+
+      function selectFormat(el) {
+        el.closest(".config-card-body, .param-card")
+          .querySelectorAll(".lang-btn")
+          .forEach((b) => b.classList.remove("active"));
+        el.classList.add("active");
+      }
+
+      // ══ POLITIQUE ════════════════════════════════════════════
+      function selectPolitic(el, key) {
+        document
+          .querySelectorAll(".politic-item")
+          .forEach((i) => i.classList.remove("active"));
+        el.classList.add("active");
+        const p = POLITICS[key];
+        document.getElementById("politic-icon").textContent = p.icon;
+        document.getElementById("politic-title").textContent = p.title;
+        document.getElementById("politic-preview").innerHTML = p.content;
+        document.querySelector(".inject-bar div").innerHTML =
+          `Page Shopify : <strong>${p.page}</strong>`;
+      }
+
+      function injectPolitic() {
+        const spinner = document.getElementById("inject-spinner");
+        const btn = spinner.parentElement;
+        btn.disabled = true;
+        spinner.style.display = "inline-block";
+        setTimeout(() => {
+          btn.disabled = false;
+          spinner.style.display = "none";
+          toast("Politique injectée dans Shopify avec succès", "success");
+          document.querySelector(
+            ".politic-item.active .politic-status",
+          ).innerHTML = '<span class="badge badge-green">Injectée</span>';
+        }, 1800);
+      }
+
+      // ══ CONFIG ═══════════════════════════════════════════════
+      function selectLang(el) {
+        el.closest(".lang-selector")
+          .querySelectorAll(".lang-btn")
+          .forEach((b) => b.classList.remove("active"));
+        el.classList.add("active");
+      }
+
+      let tokenVisible = false;
+      function toggleToken() {
+        tokenVisible = !tokenVisible;
+        const inp = document.getElementById("cfg-token");
+        inp.type = tokenVisible ? "text" : "password";
+        inp.value = tokenVisible
+          ? "shpat_REDACTED"
+          : "shpat_••••••••••••••••••••••••••••";
+        event.target.textContent = tokenVisible ? "Masquer" : "Afficher";
+      }
+
+      function testConnection() {
+        toast("Test de connexion…", "info");
+        setTimeout(() => toast("Connexion Shopify validée ✓", "success"), 1200);
+      }
+
+      function saveConfig() {
+        toast("Configuration sauvegardée", "success");
+      }
+
+      // ══ MODAL ════════════════════════════════════════════════
+      function openModal() {
+        document.getElementById("overlay").classList.add("open");
+      }
+      function closeModal() {
+        document.getElementById("overlay").classList.remove("open");
+      }
+
+      // ══ TOAST ════════════════════════════════════════════════
+      function toast(msg, type = "info") {
+        const icons = { success: "✓", warn: "⚠", error: "✕", info: "ℹ" };
+        const el = document.createElement("div");
+        el.className = `toast ${type}`;
+        el.innerHTML = `<span>${icons[type]}</span><span>${msg}</span>`;
+        document.getElementById("toasts").appendChild(el);
+        setTimeout(() => el.remove(), 3200);
+      }
+    </script>
+  </body>
+</html>

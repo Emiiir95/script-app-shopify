@@ -15,7 +15,15 @@
     "branding_mode": "theme",
 
     "_BRANDING_NAMES_NOTE": "Liste de noms pour le mode theme — ex: Atlas, Everest, Colline, Lumia",
-    "brandingNames": ["Atlas", "Everest", "Colline", "Lumia", "Skala", "Vesta", "Orion"],
+    "brandingNames": [
+      "Atlas",
+      "Everest",
+      "Colline",
+      "Lumia",
+      "Skala",
+      "Vesta",
+      "Orion"
+    ],
 
     "_BRANDING_POSITION_OPTIONS": "start = NomBrand – Niche Attributs | end = Niche Attributs – NomBrand",
     "branding_position": "start",
@@ -49,13 +57,13 @@
   "legal_info": {
     "_NOTE": "Utilisé par la feature Politiques — rempli une seule fois par boutique",
 
-    "company_name":    "Nom de l'entreprise SAS",
-    "email":           "contact@votre-domaine.com",
-    "phone":           "+33 X XX XX XX XX",
-    "address":         "123 rue de la Boutique, 75001 Paris, France",
-    "siret":           "XXX XXX XXX XXXXX",
+    "company_name": "Nom de l'entreprise SAS",
+    "email": "contact@votre-domaine.com",
+    "phone": "+33 X XX XX XX XX",
+    "address": "123 rue de la Boutique, 75001 Paris, France",
+    "siret": "XXX XXX XXX XXXXX",
     "processing_time": "2-3 jours ouvrés",
-    "shipping_delay":  "5-7 jours ouvrés",
-    "website_url":     "https://www.votre-boutique.com"
+    "shipping_delay": "5-7 jours ouvrés",
+    "website_url": "https://www.votre-boutique.com"
   }
 }

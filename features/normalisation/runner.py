@@ -37,6 +37,7 @@ from features.normalisation.injector import (
     find_taxonomy_category_gid,
 )
 from utils.logger import log, LOG_FILE
+from utils.product_filter import ask_product_status
 
 
 def _print_summary(products, vendor):
@@ -103,7 +104,8 @@ def run(store_config, store_path):
 
     # ── Fetch produits ────────────────────────────────────────────────────────
     print("\n[1/3] Récupération des produits Shopify...")
-    products = fetch_all_products_with_variants(base_url, headers)
+    product_status = ask_product_status()
+    products = fetch_all_products_with_variants(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)
@@ -134,7 +136,8 @@ def run(store_config, store_path):
     print("  • inventory_policy    = deny")
     print("  • fulfillment_service = manual")
     print("  • requires_shipping   = true")
-    print("  • status              = active")
+    status_label = "inchangé (brouillon)" if product_status == "draft" else "active"
+    print(f"  • status              = {status_label}")
     print(f"  • vendor              = {vendor!r}")
     if category_name:
         if category_name:
@@ -198,7 +201,8 @@ def run(store_config, store_path):
         log(f"Normalisation — {handle}")
 
         try:
-            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map)
+            keep_status = product_status is not None and product_status != "active"
+            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map, keep_status=keep_status)
             success_count += 1
             for vr in variant_results:
                 injection_log.append({**vr, "statut": "OK", "erreur": ""})
