@@ -28,6 +28,7 @@ from tqdm import tqdm
 
 from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
 from shopify.products import fetch_all_products_with_variants
+from shopify.metaobjects import create_metaobject_type, get_all_metaobject_definitions
 from features.normalisation.injector import (
     compute_variant_changes,
     normalize_product,
@@ -38,6 +39,42 @@ from features.normalisation.injector import (
 )
 from utils.logger import log, LOG_FILE
 from utils.product_filter import ask_product_status
+
+# Définition du metaobject shopify--color-pattern (standard Shopify color swatch)
+# NE PAS utiliser shopify--ct-color-pattern — réservé à l'app Combined Listings (payante)
+_COLOR_PATTERN_TYPE   = "shopify--color-pattern"
+_COLOR_PATTERN_FIELDS = [
+    {"key": "label",        "name": "Label",        "type": "single_line_text_field"},
+    {"key": "base_color",   "name": "Base Color",   "type": "color"},
+    {"key": "base_pattern", "name": "Base Pattern", "type": "single_line_text_field"},
+]
+
+
+def _ensure_color_pattern_definition(base_url, headers):
+    """
+    Vérifie que la définition shopify--ct-color-pattern existe.
+    Si non, tente de la créer via metaobjectDefinitionCreate.
+    Retourne True si la définition est disponible, False sinon.
+    """
+    existing = get_all_metaobject_definitions(base_url, headers)
+    if _COLOR_PATTERN_TYPE in existing:
+        return True
+
+    print(f"  → Définition '{_COLOR_PATTERN_TYPE}' absente — tentative de création...")
+    try:
+        create_metaobject_type(
+            base_url, headers,
+            type_key=_COLOR_PATTERN_TYPE,
+            name="Color Pattern",
+            field_defs=_COLOR_PATTERN_FIELDS,
+        )
+        print(f"  → Définition '{_COLOR_PATTERN_TYPE}' créée.")
+        log(f"Définition {_COLOR_PATTERN_TYPE} créée avec succès.")
+        return True
+    except Exception as e:
+        log(f"Impossible de créer la définition {_COLOR_PATTERN_TYPE} : {e}", "warning", also_print=True)
+        print("  → Les couleurs seront ignorées pour cette session.")
+        return False
 
 
 def _print_summary(products, vendor):
@@ -162,35 +199,40 @@ def run(store_config, store_path):
     )
     color_map = {}
     if has_couleur:
-        print("  → Chargement des couleurs Shopify (shopify--ct-color-pattern)...")
-        color_map = fetch_color_pattern_map(base_url, headers)
+        print("  → Chargement des couleurs Shopify (shopify--color-pattern)...")
+        color_def_ok = _ensure_color_pattern_definition(base_url, headers)
+        if not color_def_ok:
+            # Définition introuvable et non créable — skip complet du bloc couleur
+            has_couleur = False
+        else:
+            color_map = fetch_color_pattern_map(base_url, headers)
 
-        # Collecter toutes les couleurs des variantes { lowercase: nom_original }
-        variant_colors = {}
-        for p in products:
-            pos = next((o.get("position") for o in p.get("options", [])
-                        if o.get("name", "").strip().lower() == "couleur"), None)
-            if pos:
-                for v in p.get("variants", []):
-                    c = v.get(f"option{pos}", "").strip()
-                    if c:
-                        variant_colors.setdefault(c.lower(), c)
+            # Collecter toutes les couleurs des variantes { lowercase: nom_original }
+            variant_colors = {}
+            for p in products:
+                pos = next((o.get("position") for o in p.get("options", [])
+                            if o.get("name", "").strip().lower() == "couleur"), None)
+                if pos:
+                    for v in p.get("variants", []):
+                        c = v.get(f"option{pos}", "").strip()
+                        if c:
+                            variant_colors.setdefault(c.lower(), c)
 
-        missing = set(variant_colors) - set(color_map)
-        print(f"  → {len(color_map)} couleur(s) existante(s) | "
-              f"{len(variant_colors) - len(missing)}/{len(variant_colors)} couvertes")
+            missing = set(variant_colors) - set(color_map)
+            print(f"  → {len(color_map)} couleur(s) existante(s) | "
+                  f"{len(variant_colors) - len(missing)}/{len(variant_colors)} couvertes")
 
-        # Créer les metaobjects manquants
-        if missing:
-            print(f"  → Création de {len(missing)} couleur(s) manquante(s)...")
-            for key in sorted(missing):
-                original_name = variant_colors[key]
-                try:
-                    new_gid = create_color_pattern_metaobject(original_name, base_url, headers)
-                    color_map[key] = new_gid
-                    print(f"    ✓ {original_name!r}")
-                except Exception as e:
-                    log(f"Couleur {original_name!r} — création impossible : {e}", "warning", also_print=True)
+            # Créer les metaobjects manquants
+            if missing:
+                print(f"  → Création de {len(missing)} couleur(s) manquante(s)...")
+                for key in sorted(missing):
+                    original_name = variant_colors[key]
+                    try:
+                        new_gid = create_color_pattern_metaobject(original_name, base_url, headers)
+                        color_map[key] = new_gid
+                        print(f"    ✓ {original_name!r}")
+                    except Exception as e:
+                        log(f"Couleur {original_name!r} — création impossible : {e}", "warning", also_print=True)
 
     success_count  = 0
     fail_count     = 0
@@ -201,8 +243,7 @@ def run(store_config, store_path):
         log(f"Normalisation — {handle}")
 
         try:
-            keep_status = product_status is not None and product_status != "active"
-            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map, keep_status=keep_status)
+            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map)
             success_count += 1
             for vr in variant_results:
                 injection_log.append({**vr, "statut": "OK", "erreur": ""})

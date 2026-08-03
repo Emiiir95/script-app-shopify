@@ -36,6 +36,9 @@ FEATURES = {
     "5": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
     "6": ("Collections    — Création/mise à jour collections + SEO (depuis config)",  "features.collections.runner"),
     "7": ("Politiques     — Injection politiques légales + page retour",              "features.politiques.runner"),
+    "8": ("Transfert      — Copier produits + metaobjects vers autre boutique",       "features.transfert.runner"),
+    "9": ("Menus          — Création/mise à jour menus de navigation (depuis config)", "features.menus.runner"),
+   "10": ("Rebrand        — Remplacement URL/nom de marque dans descriptions et SEO",  "features.rebrand.runner"),
 }
 
 

@@ -12,7 +12,7 @@ Elle supporte plusieurs boutiques et plusieurs features indépendantes.
 
 **Lancement :**
 ```bash
-cd /Users/emirsen/Desktop/script
+cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé"
 python main.py
 ```
 
@@ -20,6 +20,10 @@ python main.py
 ```bash
 pip install requests openai tqdm
 ```
+
+Au lancement : `main.py` demande la **boutique** puis affiche le **menu des features**
+(voir la section « Menu des features & prérequis »). La session reste sur la même
+boutique jusqu'à `q`.
 
 ---
 
@@ -56,23 +60,23 @@ script/
 │   ├── products.py                 ← Fetch produits, lecture/écriture metafields produit
 │   └── metaobjects.py              ← CRUD metaobjects et metaobject definitions (GraphQL only)
 │
-├── features/                       ← UNE FEATURE = UN SOUS-DOSSIER
+├── features/                       ← UNE FEATURE = UN SOUS-DOSSIER (toutes exposent run(store_config, store_path))
 │   ├── __init__.py
-│   │
-│   ├── reviews/                    ← Feature : génération et injection d'avis clients
-│   │   ├── __init__.py
-│   │   ├── runner.py               ← Orchestration — reçoit (store_config, store_path), appelle tout
-│   │   ├── generator.py            ← Appels OpenAI — génère les avis en JSON
-│   │   ├── injector.py             ← Injection Shopify — crée metaobjects + remplit metafields
-│   │   ├── setup.py                ← Création structure Shopify — metaobject def + metafield defs
-│   │   └── prompts.py              ← Tous les prompts OpenAI — system prompt + user prompt
-│   │
-│   └── titles/                     ← Feature à venir — réécriture des titres produit
-│       ├── __init__.py
-│       ├── runner.py               ← À coder — même signature : run(store_config, store_path)
-│       ├── generator.py            ← À coder — génération titres via OpenAI
-│       ├── injector.py             ← À coder — PUT produit title via REST
-│       └── prompts.py              ← À coder — prompts pour titres
+│   ├── setup/                      ← 0. Crée la structure metafields / metaobjects
+│   ├── seo_boost/                  ← 1. Titres, meta, description HTML, handle, specs (OpenAI)
+│   ├── fiche_produit/              ← 2. Phrase, bénéfices, sections feature (OpenAI)
+│   ├── normalisation/              ← 3. Prix, taxable, stock policy, couleurs (pas d'OpenAI)
+│   ├── reviews/                    ← 4. Génération + injection d'avis clients (OpenAI)
+│   │   ├── runner.py  generator.py  injector.py  setup.py  prompts.py
+│   ├── seo_images/                 ← 5. Renommage fichiers + alt text
+│   ├── collections/                ← 6. Création/maj collections + SEO (depuis config)
+│   ├── politiques/                 ← 7. Politiques légales + page retour
+│   ├── transfert/                  ← 8. Clone produits+metaobjects vers une autre boutique
+│   │   ├── runner.py  exporter.py  importer.py   (pas de generator/prompts — pas d'OpenAI)
+│   ├── menus/                      ← 9. Menus de navigation (depuis config)
+│   │   ├── runner.py  injector.py
+│   └── rebrand/                    ← 10. Remplacement URL/nom de marque (descriptions + SEO)
+│       ├── runner.py  injector.py
 │
 ├── utils/                          ← Utilitaires partagés entre toutes les features
 │   ├── __init__.py
@@ -118,6 +122,36 @@ script/
 |---|---|
 | `stores/{boutique}/reviews_preview.csv` | Aperçu des avis avant injection |
 | `stores/{boutique}/progress.json` | Checkpoint pour reprise automatique |
+| `stores/{boutique}/seo_boost_cache.json` | Cache de génération SEO (reprise avant injection) |
+| `stores/{boutique}/rapports/*.csv` | Rapports horodatés (rebrand, normalisation, reviews) |
+
+---
+
+## Menu des features & prérequis
+
+Chaque feature est indépendante et se lance depuis le menu de `main.py`. **Chaque feature attend
+une clé de configuration dans `config.json`** (sauf setup/transfert). Si la clé manque, la feature
+affiche un message et ne fait rien — elle ne crashe pas.
+
+| # | Feature | Clé `config.json` | OpenAI | À faire AVANT de lancer |
+|---|---|---|---|---|
+| 0 | Setup | — | non | Rien. À lancer en **premier** sur une nouvelle boutique. |
+| 1 | SEO Boost | `seo_boost` | oui | La **description fournisseur** doit être dans le `body_html` de chaque produit (source de tout le contenu généré). Optionnel : `seo_boost/keywords.csv` (SEMrush). |
+| 2 | Fiche Produit | `fiche_produit` | oui | Idem SEO Boost : description fournisseur dans `body_html`. |
+| 3 | Normalisation | `normalisation` | non | Rien. Préserve le status produit. Crée les couleurs manquantes (voir note couleurs). |
+| 4 | Reviews | — (fichiers `.md`) | oui | Remplir `stores/{boutique}/reviews/*.md` + lancer Setup avant. |
+| 5 | SEO Images | `seo_boost` (meta title) | non | Lancer SEO Boost avant (utilise le meta title comme base du nom de fichier). |
+| 6 | Collections | `collections` | oui | Définir les collections dans `config.json`. |
+| 7 | Politiques | `politiques` | non | Remplir les templates HTML dans `stores/{boutique}/politiques/`. |
+| 8 | Transfert | — (choix interactif) | non | Avoir ≥ 2 boutiques dans `stores/`. La **destination** doit être vide ou acceptée en doublon. |
+| 9 | Menus | `menus` | non | Collections/pages/politiques référencées doivent **exister** (créées avant). Scope navigation requis. |
+| 10 | Rebrand | `rebrand` | non | Rien. À lancer typiquement **après un Transfert** pour changer marque/URL. |
+
+**Ordre recommandé sur une boutique neuve :**
+`0 Setup` → importer les produits (avec descriptions fournisseur) → `3 Normalisation` →
+`1 SEO Boost` → `2 Fiche Produit` → `6 Collections` → `9 Menus` → `4 Reviews` →
+`7 Politiques` → `5 SEO Images`.
+(`8 Transfert` + `10 Rebrand` = duplication d'une boutique existante vers une nouvelle.)
 
 ---
 
@@ -129,14 +163,28 @@ script/
 - **Metaobjects** : l'endpoint REST `/metaobjects.json` est **supprimé en 2026-01**. Toutes les opérations sur les metaobjects passent par **GraphQL**.
 - **REST** : utilisé pour les produits, metafields produit (GET/POST/PUT).
 - Le header `Retry-After` de Shopify peut être un float (`"2.0"`) → toujours parser avec `int(float(...))`.
+- **Mutations supprimées à surveiller :** `shopPoliciesUpdate` (batch) → remplacé par
+  `shopPolicyUpdate` (upsert, **une politique par appel**) dans `politiques/injector.py`.
 
 ### Scopes requis sur le token Shopify
 
-```
-read_products, write_products
-read_metaobjects, write_metaobjects
-read_files, write_files
-```
+La liste exhaustive à jour est dans **`champs-dacces.md`** (à copier/coller dans l'app custom Shopify).
+Minimum par feature :
+
+| Scope | Feature qui en a besoin |
+|---|---|
+| `read_products, write_products` | toutes |
+| `read_metaobjects, write_metaobjects` | setup, reviews, normalisation, transfert |
+| `read_metaobject_definitions, write_metaobject_definitions` | setup, transfert |
+| `read_files, write_files` | reviews (photos), transfert (images) |
+| `read_legal_policies, write_legal_policies` | politiques |
+| `read_online_store_pages, write_online_store_pages` | politiques (page retour), menus |
+| `read_online_store_navigation, write_online_store_navigation` | **menus** (sinon échec) |
+| `read_content, write_content` | collections, menus (blogs) |
+| `read_product_feeds, write_product_feeds` | export Google Merchant |
+
+⚠️ **Après tout changement de scope, il faut régénérer/réinstaller le token** dans Shopify — les
+anciens tokens gardent leurs anciens scopes.
 
 ### Fonctions disponibles dans `shopify/`
 
@@ -205,6 +253,108 @@ read_files, write_files
 8. Demande validation utilisateur
 9. Injecte : crée les metaobjects + remplit les metafields produit
 10. Sauvegarde la progression après chaque produit (reprise automatique si crash)
+
+---
+
+## Feature Transfert (8) — cloner une boutique vers une autre
+
+Copie **tout le catalogue** d'une boutique source vers une boutique destination, en recréant
+les objets côté destination et en **remappant les GID** (les GID Shopify sont propres à chaque
+boutique — une référence source ne fonctionne pas telle quelle sur la destination).
+
+**Prérequis :**
+- Au moins **2 boutiques** avec `config.json` valide dans `stores/`.
+- Le token de la **destination** doit avoir les scopes d'écriture (produits, metaobjects,
+  definitions, files).
+- La source est la boutique déjà sélectionnée au démarrage ; la destination est choisie
+  interactivement.
+
+**Flow (`exporter.py` → `importer.py`) :** export (définitions metaobjects, metaobjects,
+définitions metafields, produits active+draft+archived, metafields produit, URLs fichiers) →
+résumé + confirmation → import dans cet ordre de dépendances :
+1. Metaobject definitions → remap `{source_def_id: dest_def_id}`
+2. Metafield definitions (remap des `mo_def_id` dans les validations)
+3. Fichiers/images (re-upload via `fileCreate`, Shopify re-télécharge depuis l'URL)
+4. Metaobjects (remap des `file_reference`)
+5. Produits (remap `{source_product_id: dest_product_id}`, + liaison images↔variantes)
+6. Metafields produit (remap `metaobject_reference` et `file_reference`)
+
+**Notes :**
+- Les types `shopify--*` (couleurs, taxonomie) sont **ignorés** à l'import (réservés Shopify).
+- Un `file_reference` dont le fichier n'a pas pu être transféré est **sauté** (loggé), pas bloquant.
+- Pas d'idempotence : relancer **recrée** les produits (doublons). À lancer sur une destination vide.
+
+---
+
+## Feature Menus (9) — navigation
+
+Crée ou met à jour les menus de navigation depuis `config.json`. **Upsert** : si le menu existe
+(par handle) il est mis à jour (`menuUpdate`), sinon créé (`menuCreate`) — fonctionne aussi sur
+les menus par défaut non supprimables (`main-menu`, `footer`).
+
+**Scope obligatoire :** `read_online_store_navigation, write_online_store_navigation`.
+
+**Prérequis :** toutes les ressources référencées (collections, pages, blogs, politiques)
+doivent **déjà exister** — sinon l'item est ignoré avec un warning. Lancer Collections/Politiques
+avant.
+
+**Structure `config.json` :**
+```json
+"menus": [
+  {
+    "title": "Menu principal",
+    "handle": "main-menu",
+    "items": [
+      { "title": "Accueil",   "type": "frontpage" },
+      { "title": "Boutique",  "type": "catalog" },
+      { "title": "Griffoirs", "type": "collection", "handle": "griffoirs",
+        "items": [ { "title": "XXL", "type": "collection", "handle": "griffoirs-xxl" } ] },
+      { "title": "À propos",  "type": "page",  "handle": "a-propos" },
+      { "title": "Retours",   "type": "shop_policy", "policy_type": "REFUND_POLICY" },
+      { "title": "Blog",      "type": "blog",  "handle": "news" },
+      { "title": "Promo",     "type": "http",  "url": "https://..." }
+    ]
+  }
+]
+```
+Types supportés : `FRONTPAGE`, `CATALOG` (pas de ressource), `COLLECTION`/`PAGE`/`BLOG`
+(champ `handle`), `SHOP_POLICY` (champ `policy_type`), `HTTP` (champ `url`).
+Imbrication max **3 niveaux**.
+
+---
+
+## Feature Rebrand (10) — remplacement de marque
+
+Applique une liste de remplacements texte `{from → to}` sur **3 champs** de chaque produit :
+`descriptionHtml`, `seo.title`, `seo.description`. Cas d'usage : après un Transfert, remplacer
+l'ancien nom de marque / ancienne URL dans tout le catalogue.
+
+**Flow :** fetch produits (GraphQL) → calcul des changements (sans écrire) → aperçu (5 premiers)
++ compteurs → confirmation → injection `productUpdate` produit par produit → rapport CSV dans
+`stores/{boutique}/rapports/`.
+
+**Structure `config.json` :**
+```json
+"rebrand": {
+  "replacements": [
+    { "from": "ancien-site.com", "to": "nouveau-site.com" },
+    { "from": "Ancienne Marque", "to": "Nouvelle Marque" }
+  ]
+}
+```
+Remplacement **littéral** (pas de regex), sensible à la casse, applique toutes les règles dans
+l'ordre. Sûr à relancer (idempotent une fois les termes remplacés).
+
+---
+
+## Note — couleurs de la Normalisation (3)
+
+La feature Normalisation gère les swatches de couleur via le metaobject standard
+**`shopify--color-pattern`** (⚠️ **pas** `shopify--ct-color-pattern`, réservé à l'app payante
+Combined Listings). Si la définition n'existe pas, elle est créée automatiquement. Chaque couleur
+créée est rattachée à la **taxonomie Shopify** (`color_taxonomy_reference` + `pattern_taxonomy_reference`
+= "Solid") — mappings dans `_COULEUR_TAXONOMY_GID` / `_COULEUR_HEX` (injector.py). Une couleur
+inconnue tombe sur un fallback gris. **La normalisation ne modifie jamais le status du produit.**
 
 ---
 
@@ -301,16 +451,28 @@ def run(store_config: dict, store_path: str):
 ### Structure des tests
 
 ```
-tests/
+tests/                                   (~360 tests, tous mockés — aucun appel réseau réel)
 ├── __init__.py
-├── test_client.py       ← shopify/client.py     (21 tests)
-├── test_products.py     ← shopify/products.py   (13 tests)
-├── test_metaobjects.py  ← shopify/metaobjects.py (16 tests)
-├── test_generator.py    ← features/reviews/generator.py (13 tests)
-├── test_injector.py     ← features/reviews/injector.py  (11 tests)
-├── test_prompts.py      ← features/reviews/prompts.py   (14 tests)
-└── test_utils.py        ← utils/ (logger, cost_tracker, checkpoint) (27 tests)
+├── test_client.py             ← shopify/client.py              (21)
+├── test_products.py           ← shopify/products.py            (15)
+├── test_metaobjects.py        ← shopify/metaobjects.py         (16)
+├── test_generator.py          ← features/reviews/generator.py  (12)
+├── test_injector.py           ← features/reviews/injector.py   (11)
+├── test_prompts.py            ← features/reviews/prompts.py     (14)
+├── test_setup.py              ← features/setup                 (13)
+├── test_seo_images.py         ← features/seo_images            (32)
+├── test_collections.py        ← features/collections           (49)
+├── test_normalisation.py      ← features/normalisation         (22)
+├── test_politiques.py         ← features/politiques            (40)
+├── test_rebrand.py            ← features/rebrand/injector.py    (20)
+├── test_menus.py              ← features/menus/injector.py      (20)
+├── test_transfert_exporter.py ← features/transfert/exporter.py (14)
+├── test_transfert_importer.py ← features/transfert/importer.py (22)
+└── test_utils.py              ← utils/ (logger, cost_tracker, checkpoint) (38)
 ```
+
+Les runners (orchestration + I/O interactif) ne sont pas testés unitairement — seule la
+logique métier des `injector.py` / `exporter.py` / `generator.py` l'est.
 
 ### Ce qu'on teste
 

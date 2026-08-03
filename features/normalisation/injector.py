@@ -19,6 +19,7 @@ Fonctions publiques :
 """
 
 import csv
+import json
 import os
 import re
 import unicodedata
@@ -36,10 +37,8 @@ _TARGET_REQUIRES_SHIPPING   = True
 _TARGET_STATUS              = "active"
 
 
-# Hex approximatif par couleur (clé en minuscules sans accents ni espaces inutiles)
-# Utilisé lors de la création de nouveaux metaobjects shopify--color-pattern
+# Hex par couleur (clé en minuscules) — pour le champ optionnel "color"
 _COULEUR_HEX = {
-    # Couleurs existantes dans le store (hex synchronisés)
     "beige":         "#EAD8AB",
     "blanc":         "#FFFFFF",
     "noir":          "#000000",
@@ -50,11 +49,9 @@ _COULEUR_HEX = {
     "violet":        "#A54DCF",
     "marron":        "#9A5630",
     "vert":          "#05AA3D",
-    # Couleurs manquantes à créer
     "bleu":          "#2B6CB0",
     "bois":          "#C4A265",
     "bois foncé":    "#7A4E2D",
-    # Autres couleurs communes
     "rouge":         "#E63946",
     "bleu marine":   "#1A3A5C",
     "bleu clair":    "#7EC8E3",
@@ -72,7 +69,46 @@ _COULEUR_HEX = {
     "doré":          "#FFD700",
     "argenté":       "#C0C0C0",
     "multicolore":   "#FF6B6B",
+    "noël":          "#C41E3A",
 }
+
+# GIDs taxonomiques Shopify pour color_taxonomy_reference (standardisés par Shopify)
+# Source : gid://shopify/TaxonomyValue/{id}
+_COULEUR_TAXONOMY_GID = {
+    "noir":          "gid://shopify/TaxonomyValue/1",   # Black
+    "bleu":          "gid://shopify/TaxonomyValue/2",   # Blue
+    "bleu marine":   "gid://shopify/TaxonomyValue/15",  # Navy
+    "blanc":         "gid://shopify/TaxonomyValue/3",   # White
+    "doré":          "gid://shopify/TaxonomyValue/4",   # Gold
+    "argenté":       "gid://shopify/TaxonomyValue/5",   # Silver
+    "beige":         "gid://shopify/TaxonomyValue/6",   # Beige
+    "marron":        "gid://shopify/TaxonomyValue/7",   # Brown
+    "bois":          "gid://shopify/TaxonomyValue/7",   # Brown
+    "bois foncé":    "gid://shopify/TaxonomyValue/7",   # Brown
+    "caramel":       "gid://shopify/TaxonomyValue/7",   # Brown
+    "gris":          "gid://shopify/TaxonomyValue/8",   # Gray
+    "gris foncé":    "gid://shopify/TaxonomyValue/8",   # Gray
+    "gris clair":    "gid://shopify/TaxonomyValue/8",   # Gray
+    "vert":          "gid://shopify/TaxonomyValue/9",   # Green
+    "vert foncé":    "gid://shopify/TaxonomyValue/9",   # Green
+    "vert clair":    "gid://shopify/TaxonomyValue/9",   # Green
+    "orange":        "gid://shopify/TaxonomyValue/10",  # Orange
+    "rose":          "gid://shopify/TaxonomyValue/11",  # Pink
+    "rose clair":    "gid://shopify/TaxonomyValue/11",  # Pink
+    "violet":        "gid://shopify/TaxonomyValue/12",  # Purple
+    "rouge":         "gid://shopify/TaxonomyValue/13",  # Red
+    "noël":          "gid://shopify/TaxonomyValue/13",  # Red
+    "marron rouge":  "gid://shopify/TaxonomyValue/13",  # Red
+    "jaune":         "gid://shopify/TaxonomyValue/14",  # Yellow
+    "multicolore":   "gid://shopify/TaxonomyValue/13",  # Red (fallback)
+    "naturel":       "gid://shopify/TaxonomyValue/6",   # Beige
+    "crème":         "gid://shopify/TaxonomyValue/6",   # Beige
+    "ivoire":        "gid://shopify/TaxonomyValue/3",   # White
+    "taupe":         "gid://shopify/TaxonomyValue/8",   # Gray
+}
+
+# GID taxonomique pour le motif "Solid" (universel — même valeur pour tous les motifs unis)
+_PATTERN_SOLID_GID = "gid://shopify/TaxonomyValue/2874"
 
 
 def _to_handle(text):
@@ -158,7 +194,9 @@ query($cursor: String) {
         data  = graphql_request(base_url, headers, query, {"cursor": cursor})
         mo    = data.get("data", {}).get("metaobjects", {})
         for node in mo.get("nodes", []):
-            label = next((f["value"] for f in node["fields"] if f["key"] == "label"), None)
+            fields_map = {f["key"]: f["value"] for f in node["fields"]}
+            # label en priorité, sinon base_pattern comme nom de référence
+            label = fields_map.get("label") or fields_map.get("base_pattern")
             if label:
                 color_map[label.strip().lower()] = node["id"]
         page_info = mo.get("pageInfo", {})
@@ -174,17 +212,28 @@ def create_color_pattern_metaobject(color_name, base_url, headers):
     """
     Crée un metaobject shopify--color-pattern pour une couleur manquante.
 
+    Type standard Shopify (pas Combined Listings) — champs :
+      - label : nom affiché (single_line_text_field)
+      - color : hex de la couleur (color)
+
     Args:
         color_name : nom exact de la couleur (ex: "Gris foncé") — tel que dans l'option variante
 
     Returns:
         str GID du metaobject créé
     """
-    hex_color = _COULEUR_HEX.get(color_name.strip().lower())
+    key       = color_name.strip().lower()
+    hex_color = _COULEUR_HEX.get(key, "#808080")
+    color_gid = _COULEUR_TAXONOMY_GID.get(key, "gid://shopify/TaxonomyValue/8")  # Gray par défaut
     handle    = _to_handle(color_name)
-    fields    = [{"key": "label", "value": color_name}]
-    if hex_color:
-        fields.append({"key": "color", "value": hex_color})
+
+    # color_taxonomy_reference attend une liste JSON de GIDs
+    fields = [
+        {"key": "label",                     "value": color_name},
+        {"key": "color",                     "value": hex_color},
+        {"key": "color_taxonomy_reference",  "value": json.dumps([color_gid])},
+        {"key": "pattern_taxonomy_reference", "value": _PATTERN_SOLID_GID},
+    ]
 
     query = """
 mutation metaobjectCreate($metaobject: MetaobjectCreateInput!) {
@@ -206,7 +255,7 @@ mutation metaobjectCreate($metaobject: MetaobjectCreateInput!) {
     if errors:
         raise Exception(f"Création couleur {color_name!r} — userErrors: {errors}")
     gid = result.get("metaobject", {}).get("id")
-    log(f"Metaobject couleur créé : {color_name!r} ({hex_color or 'sans hex'}) → {gid}")
+    log(f"Metaobject couleur créé : {color_name!r} ({hex_color} | taxonomy: {color_gid}) → {gid}")
     return gid
 
 
@@ -344,7 +393,7 @@ def compute_variant_changes(variant):
     }
 
 
-def normalize_product(product, base_url, headers, vendor, category_gid=None, taxonomy_node_id=None, color_map=None, keep_status=False):
+def normalize_product(product, base_url, headers, vendor, category_gid=None, taxonomy_node_id=None, color_map=None):
     """
     Normalise un produit et toutes ses variantes dans Shopify.
 
@@ -363,7 +412,6 @@ def normalize_product(product, base_url, headers, vendor, category_gid=None, tax
         taxonomy_node_id : GID ProductTaxonomyNode (repli si category_gid absent) ou None
         color_map        : dict { nom_couleur_lowercase: gid } issu de fetch_color_pattern_map()
                        ou None pour ne pas modifier le metafield couleur
-        keep_status      : si True, garde le status actuel du produit au lieu de forcer "active"
 
     Returns:
         list de dicts — une entrée par variante avec les valeurs avant/après
@@ -374,7 +422,8 @@ def normalize_product(product, base_url, headers, vendor, category_gid=None, tax
     variant_results = []
 
     # ── Étape 1 : status + vendor produit (REST) ──────────────────────────────
-    target_status = product.get("status", _TARGET_STATUS) if keep_status else _TARGET_STATUS
+    # Le status est toujours préservé — la normalisation ne change jamais le status
+    target_status  = product.get("status", "draft")
     product_update = {"id": product_id, "status": target_status, "vendor": vendor}
     shopify_put(
         f"{base_url}/products/{product_id}.json",

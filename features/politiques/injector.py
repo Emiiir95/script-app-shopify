@@ -5,7 +5,7 @@ injector.py — Injection des politiques dans Shopify.
 
 Deux cibles distinctes :
   1. Politiques intégrées Shopify (Settings > Politiques)
-     → GraphQL mutation shopPoliciesUpdate
+     → GraphQL shopPolicyCreate / shopPolicyUpdate (shopPoliciesUpdate supprimé en 2024-04+)
      → Types : REFUND_POLICY, PRIVACY_POLICY, TERMS_OF_SERVICE,
                SHIPPING_POLICY, CONTACT_INFORMATION, TERMS_OF_SALE, LEGAL_NOTICE
 
@@ -31,11 +31,12 @@ from utils.logger import log
 
 # ── Politiques intégrées Shopify ───────────────────────────────────────────────
 
-_MUTATION = """
-mutation shopPoliciesUpdate($policies: [ShopPolicyInput!]!) {
-  shopPoliciesUpdate(policies: $policies) {
-    shopPolicies {
+_MUTATION_UPSERT = """
+mutation shopPolicyUpdate($shopPolicy: ShopPolicyInput!) {
+  shopPolicyUpdate(shopPolicy: $shopPolicy) {
+    shopPolicy {
       type
+      id
       url
     }
     userErrors {
@@ -121,7 +122,11 @@ def fetch_existing_policies(base_url, headers):
 
 def update_shopify_policies(policies_data, base_url, headers):
     """
-    Met à jour les politiques intégrées Shopify via GraphQL shopPoliciesUpdate.
+    Met à jour les politiques intégrées Shopify via shopPolicyUpdate (upsert).
+
+    shopPoliciesUpdate a été supprimé. La nouvelle mutation shopPolicyUpdate
+    accepte un ShopPolicyInput { type, body } et fait l'upsert (crée ou met à jour).
+    Nécessite le scope write_legal_policies sur le token Shopify.
 
     Args:
         policies_data : liste de dicts {"type": str, "body": str, "label": str}
@@ -133,48 +138,28 @@ def update_shopify_policies(policies_data, base_url, headers):
     """
     results = []
 
-    # Envoie tout en un seul appel GraphQL
-    files_input = [{"type": p["type"], "body": p["body"]} for p in policies_data]
+    for p in policies_data:
+        policy_type = p["type"]
+        body        = p["body"]
+        label       = p["label"]
 
-    try:
-        data        = graphql_request(base_url, headers, _MUTATION, {"policies": files_input})
-        payload     = data["data"]["shopPoliciesUpdate"]
-        user_errors = payload.get("userErrors", [])
+        try:
+            data        = graphql_request(base_url, headers, _MUTATION_UPSERT, {"shopPolicy": {"type": policy_type, "body": body}})
+            payload     = data["data"]["shopPolicyUpdate"]
+            user_errors = payload.get("userErrors", [])
 
-        if user_errors:
-            # Erreurs partielles — on mappe par type si possible
-            error_types = {e.get("field", ""): e.get("message", "") for e in user_errors}
-            for p in policies_data:
-                err = error_types.get(p["type"], "")
-                results.append({
-                    "label":  p["label"],
-                    "type":   p["type"],
-                    "statut": "ERREUR" if err else "OK",
-                    "url":    "",
-                    "erreur": err,
-                })
-        else:
-            url_map = {sp["type"]: sp.get("url", "") for sp in payload.get("shopPolicies", [])}
-            for p in policies_data:
-                results.append({
-                    "label":  p["label"],
-                    "type":   p["type"],
-                    "statut": "OK",
-                    "url":    url_map.get(p["type"], ""),
-                    "erreur": "",
-                })
-            log(f"Politiques Shopify mises à jour : {[p['type'] for p in policies_data]}")
+            if user_errors:
+                err_msg = " | ".join(f"{e.get('field')}: {e.get('message')}" for e in user_errors)
+                log(f"Erreur politique {policy_type} : {err_msg}", "error", also_print=True)
+                results.append({"label": label, "type": policy_type, "statut": "ERREUR", "url": "", "erreur": err_msg})
+            else:
+                url = payload.get("shopPolicy", {}).get("url", "")
+                log(f"Politique OK : {policy_type} (url: {url})")
+                results.append({"label": label, "type": policy_type, "statut": "OK", "url": url, "erreur": ""})
 
-    except Exception as e:
-        log(f"Erreur shopPoliciesUpdate : {e}", "error", also_print=True)
-        for p in policies_data:
-            results.append({
-                "label":  p["label"],
-                "type":   p["type"],
-                "statut": "ERREUR",
-                "url":    "",
-                "erreur": str(e),
-            })
+        except Exception as e:
+            log(f"Erreur politique {policy_type} : {e}", "error", also_print=True)
+            results.append({"label": label, "type": policy_type, "statut": "ERREUR", "url": "", "erreur": str(e)})
 
     return results
 

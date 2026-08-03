@@ -185,37 +185,42 @@ class TestUpdateShopifyPolicies(unittest.TestCase):
             {"type": "PRIVACY_POLICY", "body": "<p>Privé</p>",   "label": "Confidentialité"},
         ]
 
+    @staticmethod
+    def _ok_response(policy_type, url):
+        """Réponse shopPolicyUpdate réussie pour une politique donnée."""
+        return {"data": {"shopPolicyUpdate": {
+            "shopPolicy": {"type": policy_type, "id": f"gid://{policy_type}", "url": url},
+            "userErrors": [],
+        }}}
+
     @patch("features.politiques.injector.graphql_request")
     def test_success(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {"shopPoliciesUpdate": {
-                "shopPolicies": [
-                    {"type": "REFUND_POLICY",  "url": "/policies/refund-policy"},
-                    {"type": "PRIVACY_POLICY", "url": "/policies/privacy-policy"},
-                ],
-                "userErrors": [],
-            }}
-        }
+        mock_gql.side_effect = [
+            self._ok_response("REFUND_POLICY",  "/policies/refund-policy"),
+            self._ok_response("PRIVACY_POLICY", "/policies/privacy-policy"),
+        ]
         results = update_shopify_policies(self._make_policies(), BASE_URL, HEADERS)
         self.assertEqual(len(results), 2)
         self.assertTrue(all(r["statut"] == "OK" for r in results))
 
     @patch("features.politiques.injector.graphql_request")
-    def test_all_sent_in_one_call(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {"shopPoliciesUpdate": {"shopPolicies": [], "userErrors": []}}
-        }
+    def test_one_call_per_policy(self, mock_gql):
+        # shopPoliciesUpdate (batch) est supprimé → upsert une politique à la fois
+        mock_gql.return_value = self._ok_response("REFUND_POLICY", "/x")
         update_shopify_policies(self._make_policies(), BASE_URL, HEADERS)
-        self.assertEqual(mock_gql.call_count, 1)
+        self.assertEqual(mock_gql.call_count, 2)
+        # Chaque appel envoie un seul ShopPolicyInput { type, body }
         variables = mock_gql.call_args.args[3]
-        self.assertEqual(len(variables["policies"]), 2)
+        self.assertIn("shopPolicy", variables)
+        self.assertIn("type", variables["shopPolicy"])
+        self.assertIn("body", variables["shopPolicy"])
 
     @patch("features.politiques.injector.graphql_request")
     def test_user_errors_marks_erreur(self, mock_gql):
         mock_gql.return_value = {
-            "data": {"shopPoliciesUpdate": {
-                "shopPolicies": [],
-                "userErrors": [{"field": "REFUND_POLICY", "message": "Invalid body"}],
+            "data": {"shopPolicyUpdate": {
+                "shopPolicy": None,
+                "userErrors": [{"field": "body", "message": "Invalid body"}],
             }}
         }
         results = update_shopify_policies(self._make_policies(), BASE_URL, HEADERS)
@@ -223,20 +228,21 @@ class TestUpdateShopifyPolicies(unittest.TestCase):
         self.assertEqual(statuts["REFUND_POLICY"], "ERREUR")
 
     @patch("features.politiques.injector.graphql_request")
-    def test_exception_marks_all_erreur(self, mock_gql):
-        mock_gql.side_effect = Exception("Network error")
+    def test_one_failure_does_not_block_others(self, mock_gql):
+        # La 1ère politique échoue, la 2ème réussit → traitement indépendant
+        mock_gql.side_effect = [
+            Exception("Network error"),
+            self._ok_response("PRIVACY_POLICY", "/policies/privacy-policy"),
+        ]
         results = update_shopify_policies(self._make_policies(), BASE_URL, HEADERS)
-        self.assertTrue(all(r["statut"] == "ERREUR" for r in results))
+        statuts = {r["type"]: r["statut"] for r in results}
+        self.assertEqual(statuts["REFUND_POLICY"],  "ERREUR")
+        self.assertEqual(statuts["PRIVACY_POLICY"], "OK")
         self.assertIn("Network error", results[0]["erreur"])
 
     @patch("features.politiques.injector.graphql_request")
     def test_url_populated_on_success(self, mock_gql):
-        mock_gql.return_value = {
-            "data": {"shopPoliciesUpdate": {
-                "shopPolicies": [{"type": "REFUND_POLICY", "url": "/policies/refund-policy"}],
-                "userErrors": [],
-            }}
-        }
+        mock_gql.return_value = self._ok_response("REFUND_POLICY", "/policies/refund-policy")
         results = update_shopify_policies(
             [{"type": "REFUND_POLICY", "body": "<p>R</p>", "label": "Retour"}],
             BASE_URL, HEADERS
