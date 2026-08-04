@@ -347,6 +347,25 @@ l'ordre. Sûr à relancer (idempotent une fois les termes remplacés).
 
 ---
 
+## Note — modes de titre H1 (SEO Boost 1)
+
+Le H1 produit est construit algorithmiquement par `build_h1` selon la clé `title_style`
+du bloc `seo_boost` (config.json). **3 modes** (exemple niche = "Griffoir Chat", SEO =
+"XXL Sisal Beige", marque = "LumiNest") :
+
+| `title_style` | Marque ? | SEO | Résultat |
+|---|---|---|---|
+| `characteristics` (défaut) | non | complet | `Griffoir Chat XXL Sisal Beige` |
+| `branded` | oui | **court** (2 mots-clés) | `LumiNest – Griffoir Chat XXL Sisal` |
+| `seo_branded` | oui | complet | `LumiNest – Griffoir Chat XXL Sisal Beige` |
+
+- Les modes marqués (`branded`, `seo_branded`) utilisent `branding_mode` = `"ai"` (nom inventé
+  par GPT) ou `"theme"` (pioché dans `brandingNames`), et `branding_position` = `"start"`/`"end"`.
+- Le nombre de mots-clés SEO gardés en mode `branded` = constante `_BRANDED_SHORT_WORDS` (generator.py).
+- Le meta title (`build_meta_title`) est indépendant et n'inclut jamais la marque.
+
+---
+
 ## Note — couleurs de la Normalisation (3)
 
 La feature Normalisation gère les swatches de couleur via le metaobject standard

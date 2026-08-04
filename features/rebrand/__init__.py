@@ -1,1 +1,1 @@
-# features/rebrand/__init__.py
+# features/rebrand — feature Rebrand

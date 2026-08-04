@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Backoffice — Shopify Automation</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">⚙️ Shopify Automation <span>Backoffice</span></div>
+    <div class="store-picker">
+      <label>Boutique</label>
+      <select id="storeSelect"></select>
+      <button id="newStoreBtn" class="small">+ Nouvelle boutique</button>
+      <span id="storeUrl" class="store-url"></span>
+    </div>
+  </header>
+
+  <div class="layout">
+    <nav class="sidebar" id="sidebar"></nav>
+
+    <main class="content">
+      <div id="panel">
+        <div class="empty">Sélectionnez une boutique puis une fonctionnalité.</div>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

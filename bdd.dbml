@@ -1,0 +1,429 @@
+// =====================================================================
+//  Shopify Automation — Modèle de base de données
+//  À coller dans https://dbdiagram.io/home  (format DBML)
+//
+//  Ce schéma remplace l'infra actuelle basée fichiers (config.json,
+//  progress.json, *_cache.json, rapports/*.csv) par une base relationnelle.
+//  Il couvre : auth SaaS, boutiques, configs des features, catalogue miroir,
+//  contenu généré (SEO, fiches, avis), collections, menus, politiques,
+//  transferts, exécutions/reprises et suivi des coûts OpenAI.
+//
+//  Clés primaires en uuid (default gen_random_uuid()) pour tout le modèle,
+//  sauf `migrations` (integer auto-increment — convention ORM).
+//  Relation user → stores : 1 utilisateur possède N boutiques.
+// =====================================================================
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  0. AUTH & INFRA SAAS
+// ─────────────────────────────────────────────────────────────────────
+
+Enum user_role_enum {
+  admin
+  user
+}
+
+Table user {
+  id                            uuid              [pk, default: `gen_random_uuid()`]
+  email                         varchar(255)      [unique, not null]
+  password                      varchar(255)      [note: 'hash bcrypt/argon2']
+  role                          user_role_enum
+  permissions                   "text[]"          [default: '{}']
+  first_name                    varchar
+  last_name                     varchar
+  phone_number                  varchar           [null]
+  newsletter                    boolean           [default: false]
+  terms_of_use_acceptation_date date              [null]
+  stripe_customer_id            varchar           [null, note: 'lien vers Stripe — tables paiement à venir']
+  email_verified                boolean           [default: false]
+  billing_address               varchar           [null]
+  billing_address_complement    varchar           [null]
+  billing_city                  varchar           [null]
+  billing_postal_code           varchar           [null]
+  billing_country               varchar           [null]
+  preferred_language            varchar(10)       [null]
+  last_login_at                 timestamptz       [null]
+  created_at                    timestamptz       [default: `now()`]
+  updated_at                    timestamptz       [default: `now()`]
+
+  Note: 'Compte utilisateur du SaaS. Possède N boutiques (stores.user_id).'
+}
+
+Table user_token {
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  user_id           uuid          [not null]
+  value             varchar(255)  [unique, not null]
+  can_be_refreshed  boolean
+  token_type        varchar(255)  [note: 'access | refresh | email_verification | password_reset']
+  created_at        timestamptz   [default: `now()`]
+  updated_at        timestamptz   [default: `now()`]
+  expiration_date   timestamptz
+
+  Note: 'Jetons applicatifs (auth, refresh, vérif email, reset mdp). ON DELETE CASCADE.'
+}
+Ref: user_token.user_id > user.id [delete: cascade]
+
+Table migrations {
+  id         integer   [pk, increment, note: 'nextval(migrations_id_seq)']
+  timestamp  bigint    [not null]
+  name       varchar   [not null]
+
+  Note: 'Historique des migrations (TypeORM/Knex/…). Géré par l ORM, ne pas éditer à la main.'
+}
+
+// Anti brute-force : compte les tentatives (login, reset mdp, envoi email…)
+// par cible + identifiant dans une fenêtre de temps → blocage si trop nombreuses.
+Table rate_limit_attempt {
+  id          uuid          [pk, default: `gen_random_uuid()`]
+  target      varchar(255)  [not null, note: 'action limitée, ex: login | password_reset | email_verification']
+  identifier  varchar(128)  [not null, note: 'clé de regroupement, ex: email ou IP']
+  created_at  timestamptz   [default: `now()`]
+
+  indexes {
+    (target, identifier, created_at)
+    created_at [note: 'purge des vieilles tentatives']
+  }
+  Note: 'Protège les endpoints publics d auth contre le brute-force et le spam.'
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  1. BOUTIQUES  (stores/{boutique}/config.json → racine)
+// ─────────────────────────────────────────────────────────────────────
+
+Table stores {
+  id            uuid         [pk, default: `gen_random_uuid()`]
+  user_id       uuid         [not null, note: 'propriétaire de la boutique']
+  folder        varchar      [not null, note: 'slug du dossier stores/, ex: atelier-veilleuse']
+  name          varchar      [not null, note: 'nom affiché, ex: L Atelier Veilleuse']
+  store_url     varchar      [not null, note: 'xxxx.myshopify.com']
+  access_token  varchar      [not null, note: 'shpat_… (chiffrer en prod)']
+  created_at    timestamptz  [default: `now()`]
+  updated_at    timestamptz
+
+  indexes {
+    (user_id, folder) [unique, note: 'slug unique PAR utilisateur']
+  }
+  Note: 'Une ligne par boutique, rattachée à un utilisateur (1 user → N stores). Remplace config.json.'
+}
+Ref: stores.user_id > user.id [delete: cascade]
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  2. CONFIG DES FEATURES  (blocs seo_boost / fiche_produit / rebrand…)
+//     Une table par bloc de config.json qui pilote une feature.
+// ─────────────────────────────────────────────────────────────────────
+
+Table seo_boost_config {
+  id                        uuid      [pk, default: `gen_random_uuid()`]
+  store_id                  uuid      [ref: - stores.id, not null]
+  niche_keyword             varchar   [note: 'ex: Veilleuse']
+  title_style               varchar   [note: 'characteristics | branded | seo_branded']
+  branding_mode             varchar   [note: 'ai | theme (si title_style marqué)']
+  branding_position         varchar   [note: 'start | end']
+  vendor                    varchar
+  word_count                integer   [default: 200]
+  generate_meta_description boolean   [default: true]
+  generate_description      boolean   [default: true]
+
+  Note: 'Bloc "seo_boost" — relation 1:1 avec stores.'
+}
+
+// Collections SEO déclarées dans seo_boost (mainCollection + collections[])
+Table seo_boost_collections {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  seo_boost_id      uuid      [ref: > seo_boost_config.id, not null]
+  name              varchar   [not null]
+  url               varchar
+  search_volume     integer   [note: 'volume SEMrush']
+  is_main           boolean   [default: false, note: 'true = mainCollection']
+  tags              varchar   [note: 'liste de tags (JSON/CSV)']
+}
+
+Table fiche_produit_config {
+  id          uuid      [pk, default: `gen_random_uuid()`]
+  store_id    uuid      [ref: - stores.id, not null]
+  enabled     boolean   [default: true]
+  params      varchar   [note: 'paramètres libres du bloc fiche_produit (JSON)']
+
+  Note: 'Bloc "fiche_produit".'
+}
+
+Table normalisation_config {
+  id          uuid      [pk, default: `gen_random_uuid()`]
+  store_id    uuid      [ref: - stores.id, not null]
+  params      varchar   [note: 'règles prix / taxable / stock policy (JSON)']
+
+  Note: 'Bloc "normalisation".'
+}
+
+Table rebrand_rules {
+  id          uuid      [pk, default: `gen_random_uuid()`]
+  store_id    uuid      [ref: > stores.id, not null]
+  from_text   varchar   [not null, note: 'chaîne à remplacer (littéral)']
+  to_text     varchar   [not null]
+  position    integer   [note: 'ordre d application des règles']
+
+  Note: 'Bloc "rebrand".replacements[] — appliqué à descriptionHtml, seo.title, seo.description.'
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  3. CATALOGUE  (miroir des produits Shopify + metafields)
+// ─────────────────────────────────────────────────────────────────────
+
+Table products {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  store_id          uuid      [ref: > stores.id, not null]
+  shopify_gid       varchar   [note: 'gid://shopify/Product/…']
+  shopify_id        bigint    [note: 'id REST']
+  handle            varchar   [not null]
+  title             varchar
+  body_html         text      [note: 'description fournisseur = source du contenu généré']
+  status            varchar   [note: 'active | draft | archived']
+  vendor            varchar
+  seo_title         varchar
+  seo_description   varchar
+  updated_at        timestamptz
+
+  indexes {
+    (store_id, handle) [unique]
+  }
+  Note: 'Miroir local des produits d une boutique.'
+}
+
+Table product_metafields {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  product_id    uuid      [ref: > products.id, not null]
+  namespace     varchar   [not null, default: 'custom']
+  key           varchar   [not null, note: 'ex: note_globale_du_produit, avis_clients_1..8']
+  type          varchar   [note: 'single_line_text_field | metaobject_reference | …']
+  value         text      [note: 'valeur ou GID référencé']
+
+  indexes {
+    (product_id, namespace, key) [unique]
+  }
+}
+
+Table product_images {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  product_id    uuid      [ref: > products.id, not null]
+  shopify_gid   varchar
+  src           varchar
+  alt_text      varchar   [note: 'renseigné par la feature SEO Images']
+  filename      varchar   [note: 'nom de fichier renommé (base = meta title)']
+  position      integer
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  4. CONTENU GÉNÉRÉ PAR IA  (SEO Boost, Fiche Produit, Reviews)
+//     Historisé : une ligne par génération, rattaché à un run.
+// ─────────────────────────────────────────────────────────────────────
+
+Table seo_generations {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  product_id        uuid      [ref: > products.id, not null]
+  run_id            uuid      [ref: > feature_runs.id]
+  handle_original   varchar
+  handle_nouveau    varchar
+  titre_original    varchar
+  h1_nouveau        varchar
+  differentiator    varchar
+  branding_name     varchar
+  meta_title        varchar
+  meta_description  varchar
+  description_html  text
+  injected          boolean   [default: false]
+  created_at        timestamptz [default: `now()`]
+
+  Note: 'Sortie SEO Boost (remplace seo_boost_cache.json + rapports/seo_boost_*.csv).'
+}
+
+Table fiche_generations {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  product_id    uuid      [ref: > products.id, not null]
+  run_id        uuid      [ref: > feature_runs.id]
+  phrase        text
+  benefice_1    varchar
+  benefice_2    varchar
+  benefice_3    varchar
+  titre1        varchar
+  desc1         text
+  titre2        varchar
+  desc2         text
+  image_1_gid   varchar
+  image_2_gid   varchar
+  injected      boolean   [default: false]
+  created_at    timestamptz [default: `now()`]
+
+  Note: 'Sortie Fiche Produit (remplace rapports/fiche_produit_*.csv).'
+}
+
+// Metaobject Shopify "avis_client"
+Table reviews {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  product_id    uuid      [ref: > products.id, not null]
+  run_id        uuid      [ref: > feature_runs.id]
+  slot          integer   [not null, note: '1..8 → metafield avis_clients_N']
+  shopify_gid   varchar   [note: 'gid du metaobject avis_client créé']
+  note          decimal   [note: 'entre 4.5 et 5.0']
+  titre         varchar
+  texte         text
+  nom_auteur    varchar   [note: 'format "Prénom I."']
+  photo_1_gid   varchar
+  photo_2_gid   varchar
+  injected      boolean   [default: false]
+  created_at    timestamptz [default: `now()`]
+
+  indexes {
+    (product_id, slot) [unique]
+  }
+  Note: 'Avis générés. rating_global/review_count agrégés stockés en metafield note_globale_du_produit.'
+}
+
+// Contexte IA par boutique (reviews/*.md, marketing.md, personas, reassurance.md)
+Table ai_context_files {
+  id          uuid      [pk, default: `gen_random_uuid()`]
+  store_id    uuid      [ref: > stores.id, not null]
+  kind        varchar   [not null, note: 'marketing | persona1 | persona2 | persona3 | reassurance']
+  content     text
+  updated_at  timestamptz
+
+  indexes {
+    (store_id, kind) [unique]
+  }
+  Note: 'Remplace stores/{boutique}/reviews/*.md édités via le backoffice.'
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  5. COLLECTIONS  (feature 6)
+// ─────────────────────────────────────────────────────────────────────
+
+Table collections {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  store_id          uuid      [ref: > stores.id, not null]
+  shopify_gid       varchar
+  handle            varchar   [not null]
+  title             varchar
+  seo_title         varchar
+  seo_description   varchar
+  search_volume     integer
+
+  indexes {
+    (store_id, handle) [unique]
+  }
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  6. MENUS  (feature 9 — imbrication max 3 niveaux)
+// ─────────────────────────────────────────────────────────────────────
+
+Table menus {
+  id          uuid      [pk, default: `gen_random_uuid()`]
+  store_id    uuid      [ref: > stores.id, not null]
+  handle      varchar   [not null, note: 'main-menu | footer | …']
+  title       varchar
+
+  indexes {
+    (store_id, handle) [unique]
+  }
+}
+
+Table menu_items {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  menu_id       uuid      [ref: > menus.id, not null]
+  parent_id     uuid      [ref: > menu_items.id, note: 'auto-référence — sous-items (3 niveaux max)']
+  title         varchar   [not null]
+  type          varchar   [not null, note: 'FRONTPAGE|CATALOG|COLLECTION|PAGE|BLOG|SHOP_POLICY|HTTP']
+  handle        varchar   [note: 'pour COLLECTION/PAGE/BLOG']
+  policy_type   varchar   [note: 'pour SHOP_POLICY, ex REFUND_POLICY']
+  url           varchar   [note: 'pour HTTP']
+  position      integer
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  7. POLITIQUES LÉGALES  (feature 7)
+// ─────────────────────────────────────────────────────────────────────
+
+Table policies {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  store_id      uuid      [ref: > stores.id, not null]
+  policy_type   varchar   [not null, note: 'REFUND_POLICY | PRIVACY_POLICY | TERMS_OF_SERVICE | SHIPPING_POLICY']
+  body_html     text
+  updated_at    timestamptz
+
+  indexes {
+    (store_id, policy_type) [unique]
+  }
+  Note: 'Upsert via shopPolicyUpdate (une politique par appel). + page retour éventuelle.'
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  8. EXÉCUTIONS DES FEATURES  (runs, reprise, coûts)
+//     Remplace progress.json (checkpoint) et le CostTracker.
+// ─────────────────────────────────────────────────────────────────────
+
+Table feature_runs {
+  id                uuid      [pk, default: `gen_random_uuid()`]
+  store_id          uuid      [ref: > stores.id, not null]
+  feature           varchar   [not null, note: 'setup|seo_boost|fiche_produit|normalisation|reviews|seo_images|collections|politiques|transfert|menus|rebrand']
+  status            varchar   [not null, note: 'running | completed | failed | interrupted']
+  last_index        integer   [note: 'reprise : dernier produit traité (ex progress.json)']
+  started_at        timestamptz [default: `now()`]
+  finished_at       timestamptz
+  openai_calls      integer   [default: 0]
+  openai_tokens_in  integer   [default: 0]
+  openai_tokens_out integer   [default: 0]
+  cost_usd          decimal   [default: 0, note: 'suivi CostTracker']
+  error_message     text
+
+  Note: 'Un run = une exécution d une feature sur une boutique.'
+}
+
+// Reprise fine : produits déjà traités dans un run (ex completed_handles)
+Table run_completed_products {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  run_id        uuid      [ref: > feature_runs.id, not null]
+  product_id    uuid      [ref: > products.id, not null]
+  completed_at  timestamptz [default: `now()`]
+
+  indexes {
+    (run_id, product_id) [unique]
+  }
+  Note: 'Checkpoint par produit → reprise automatique après crash.'
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  9. TRANSFERTS  (feature 8 — clone boutique → boutique, remap GID)
+// ─────────────────────────────────────────────────────────────────────
+
+Table transfers {
+  id              uuid      [pk, default: `gen_random_uuid()`]
+  run_id          uuid      [ref: - feature_runs.id]
+  source_store_id uuid      [ref: > stores.id, not null]
+  dest_store_id   uuid      [ref: > stores.id, not null]
+  status          varchar   [note: 'running | completed | failed']
+  created_at      timestamptz [default: `now()`]
+
+  Note: 'Une opération de clonage complet source → destination.'
+}
+
+// Table de correspondance des GID (les GID sont propres à chaque boutique)
+Table transfer_gid_map {
+  id            uuid      [pk, default: `gen_random_uuid()`]
+  transfer_id   uuid      [ref: > transfers.id, not null]
+  object_type   varchar   [not null, note: 'metaobject_definition | metafield_definition | file | metaobject | product | product_metafield']
+  source_gid    varchar   [not null]
+  dest_gid      varchar
+
+  indexes {
+    (transfer_id, object_type, source_gid) [unique]
+  }
+  Note: 'Remap {source_gid → dest_gid} utilisé pendant l import.'
+}

@@ -16,8 +16,11 @@ Flow :
 
 Config seo_boost dans config.json :
   niche_keyword         : mot-clé principal de la niche
-  title_style           : "branded" | "characteristics"
-  branding_mode         : "theme" | "ai"  (ignoré si title_style != "branded")
+  title_style           : "characteristics" | "branded" | "seo_branded"
+                            - characteristics : niche + SEO complet, sans marque
+                            - branded         : marque + niche + SEO court (marque en avant)
+                            - seo_branded     : marque + niche + SEO complet
+  branding_mode         : "theme" | "ai"  (utilisé si title_style = branded ou seo_branded)
   brandingNames         : list de noms pour le mode theme
   branding_position     : "start" | "end"  (défaut "start")
   vendor                : nom qui apparaît dans le meta title après le |
@@ -72,6 +75,7 @@ def _print_seo_boost_estimate(n_products, boost_cfg):
     """Affiche l'estimation de coût OpenAI avant la génération."""
     generate_meta = boost_cfg.get("generate_meta_description", True)
     generate_desc = boost_cfg.get("generate_description", True)
+    title_style   = boost_cfg.get("title_style", "characteristics")
     branding_mode = boost_cfg.get("branding_mode", "theme")
     word_count    = max(200, min(400, int(boost_cfg.get("word_count", 200))))
 
@@ -79,7 +83,7 @@ def _print_seo_boost_estimate(n_products, boost_cfg):
     inp = _TOKENS_DIFFERENTIATOR[0]
     out = _TOKENS_DIFFERENTIATOR[1]
 
-    if branding_mode == "ai":
+    if title_style in ("branded", "seo_branded") and branding_mode == "ai":
         calls_per += 1
         inp += _TOKENS_AI_BRANDING[0]
         out += _TOKENS_AI_BRANDING[1]
@@ -669,7 +673,8 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
             seo_keywords_block = format_keywords_for_prompt(matched_kws, niche_kw)
 
             # ── Branding name ─────────────────────────────────────────────────
-            if title_style == "branded":
+            # Les modes "branded" et "seo_branded" ont tous deux un nom de marque.
+            if title_style in ("branded", "seo_branded"):
                 if branding_mode == "ai":
                     branding_name = generate_ai_branding_name(
                         product_keyword, niche_kw, supplier_description,
@@ -688,7 +693,7 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
                 product_keyword, niche_kw, supplier_description,
                 seo_keywords_block, openai_client, cost_tracker,
             )
-            h1         = build_h1(branding_name, niche_kw, differentiator, branding_position)
+            h1         = build_h1(branding_name, niche_kw, differentiator, branding_position, title_style)
             meta_title = build_meta_title(niche_kw, differentiator, vendor)
 
             # ── Meta description ──────────────────────────────────────────────

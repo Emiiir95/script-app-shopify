@@ -265,13 +265,25 @@ def clean_differentiator(niche_keyword, differentiator):
     return ' '.join(result)
 
 
-def build_h1(branding_name, niche_keyword, differentiator, branding_position="start"):
-    """
-    Construit le H1 algorithmiquement.
+# Nombre de mots-clés SEO conservés dans le H1 en mode "branded" (marque en avant, SEO court)
+_BRANDED_SHORT_WORDS = 2
 
-    Si branding_name est vide (mode characteristics) :
-        "{niche_keyword} {cleaned}"
-    Sinon, selon branding_position :
+
+def _first_words(text, n):
+    """Retourne au plus les n premiers mots de text."""
+    return ' '.join(text.split()[:n])
+
+
+def build_h1(branding_name, niche_keyword, differentiator, branding_position="start", title_style="characteristics"):
+    """
+    Construit le H1 algorithmiquement selon le mode `title_style`.
+
+    Trois modes :
+      - "characteristics" : "{niche} {seo_complet}"                 (pas de marque)
+      - "branded"         : marque + "{niche} {seo_court}"          (SEO tronqué à 2 mots-clés)
+      - "seo_branded"     : marque + "{niche} {seo_complet}"        (SEO complet + marque)
+
+    Le placement de la marque (branded / seo_branded) suit branding_position :
         "start" : "{branding_name} – {niche_keyword} {cleaned}"
         "end"   : "{niche_keyword} {cleaned} – {branding_name}"
 
@@ -280,11 +292,16 @@ def build_h1(branding_name, niche_keyword, differentiator, branding_position="st
         niche_keyword      : mot-clé de la niche
         differentiator     : attributs différenciants bruts
         branding_position  : "start" ou "end"
+        title_style        : "characteristics" | "branded" | "seo_branded"
 
     Returns:
         str : H1 construit
     """
     cleaned = clean_differentiator(niche_keyword, differentiator)
+
+    # Mode "branded" = marque en avant → SEO volontairement court
+    if title_style == "branded":
+        cleaned = _first_words(cleaned, _BRANDED_SHORT_WORDS)
 
     if not branding_name:
         parts = [niche_keyword]
