@@ -170,14 +170,21 @@ def read_log_tail(n_lines=300):
     return "\n".join(lines[-n_lines:])
 
 
-def open_terminal():
-    """Ouvre le CLI interactif `python main.py` dans un nouveau Terminal (macOS)."""
+def open_terminal(store=None, feature=None):
+    """
+    Ouvre le CLI dans un nouveau Terminal (macOS).
+    Si store + feature sont fournis, lance directement cette feature sur cette
+    boutique (main.py --store <folder> --feature <id>) — sinon menu interactif.
+    """
     if sys.platform != "darwin":
         return False, f"Ouverture auto du Terminal supportée sur macOS uniquement. Commande : cd '{PROJECT_ROOT}' && python3 main.py"
     py = sys.executable or "python3"
     # Commande shell : chemins entre guillemets SIMPLES (shlex.quote) pour ne pas
     # entrer en conflit avec les guillemets doubles de la chaîne AppleScript.
-    cmd = f"cd {shlex.quote(PROJECT_ROOT)} && {shlex.quote(py)} main.py"
+    extra = ""
+    if store and feature:
+        extra = f" --store {shlex.quote(store)} --feature {shlex.quote(feature)}"
+    cmd = f"cd {shlex.quote(PROJECT_ROOT)} && {shlex.quote(py)} main.py{extra}"
     # Échappement pour AppleScript (chaîne entre guillemets doubles) : backslash puis guillemet.
     cmd_as = cmd.replace("\\", "\\\\").replace('"', '\\"')
     script = f'tell application "Terminal"\n  activate\n  do script "{cmd_as}"\nend tell'
@@ -292,7 +299,8 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self._send_json({"ok": True, "folder": folder})
             elif path == "/api/run":
-                ok, msg = open_terminal()
+                body    = self._read_body()
+                ok, msg = open_terminal(body.get("store"), body.get("feature"))
                 self._send_json({"ok": ok, "message": msg})
             else:
                 self._send_error("Endpoint inconnu", 404)

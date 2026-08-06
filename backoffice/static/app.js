@@ -75,7 +75,24 @@ const FEATURES = [
     requires:[ {file:"fiche_produit/reassurance.md", label:"Fichier reassurance.md rempli" } ],
     files:[ {name:"fiche_produit/reassurance.md", label:"reassurance.md — tes arguments qui rassurent (livraison, garantie, paiement sécurisé…). L'IA s'en sert pour la fiche."} ] },
 
-  { id:"normalisation", num:"3", label:"Normalisation", ico:"🎚️", section:"Features",
+  { id:"fond_studio", num:"3", label:"Fond Studio", ico:"🎨", section:"Features",
+    desc:"Régénère la 1ère image de chaque produit sur un fond de couleur unie (IA). Le produit reste identique, seul le fond change.",
+    prereq:"Chaque produit doit avoir au moins une photo. La nouvelle image devient la 1ère (l'ancienne est gardée juste après). ⚠ Chaque image générée est facturée par OpenAI.",
+    requires:[ {config:"fond_studio.background_color", label:"Couleur du fond définie"} ],
+    fields:[
+      {path:"fond_studio.background_color", label:"Couleur du fond", type:"color", help:"Clique sur la pastille pour choisir dans la palette, ou tape un code hexadécimal (ex : #F5F5F5). Tu peux aussi écrire un nom comme « blanc » ou « beige »."},
+      {path:"fond_studio.output_format", label:"Format du fichier image", type:"select", options:[
+        ["png","PNG — qualité max"],["jpeg","JPG — léger"],["webp","WEBP — léger et moderne"],
+      ], help:"Le format dans lequel la nouvelle image sera enregistrée."},
+      {path:"fond_studio.size", label:"Dimensions de l'image", type:"select", options:[
+        ["1024x1024","Carré (1024×1024)"],["1024x1536","Portrait (1024×1536)"],["1536x1024","Paysage (1536×1024)"],["auto","Auto"],
+      ], help:"Choisis selon le format de tes photos produits. « Carré » convient à la plupart des boutiques."},
+      {path:"fond_studio.product_status", label:"Quels produits traiter ?", type:"select", options:[
+        ["all","Tous les produits"],["active","Actifs uniquement"],["draft","Brouillons uniquement"],
+      ], help:"Traiter tous tes produits, ou seulement ceux qui sont en ligne (actifs) ou en brouillon."},
+    ]},
+
+  { id:"normalisation", num:"4", label:"Normalisation", ico:"🎚️", section:"Features",
     desc:"Met de l'ordre dans tous tes produits d'un coup : prix, taxes, gestion du stock, couleurs. Uniformise sans toucher au reste.",
     prereq:"Le nom du fabricant (« vendor ») appliqué à chaque produit sera automatiquement le nom de ta boutique.",
     fields:[
@@ -83,7 +100,7 @@ const FEATURES = [
       {path:"normalisation.product_category_search", label:"Même catégorie mais en anglais", type:"text", help:"Shopify cherche la catégorie en anglais. Écris la même chose en anglais. Ex : « Cat Trees & Towers »."},
     ]},
 
-  { id:"reviews", num:"4", label:"Reviews", ico:"⭐", section:"Features",
+  { id:"reviews", num:"5", label:"Reviews", ico:"⭐", section:"Features",
     desc:"Crée automatiquement des avis clients crédibles (note, titre, texte, prénom) et les ajoute à tes produits.",
     prereq:"Lance <b>Setup</b> d'abord. Puis remplis les 4 fichiers ci-dessous : ils disent à l'IA quoi vendre et à qui.",
     requires:[
@@ -99,18 +116,18 @@ const FEATURES = [
       {name:"reviews/persona3.md", label:"persona3.md — portrait d'un 3ᵉ type de client (ex : quelqu'un qui offre un cadeau)."},
     ]},
 
-  { id:"seo_images", num:"5", label:"SEO Images", ico:"🖼️", section:"Features",
+  { id:"seo_images", num:"6", label:"SEO Images", ico:"🖼️", section:"Features",
     desc:"Renomme les fichiers image et ajoute une description cachée (alt text) pour que Google Images comprenne tes photos.",
     info:true, prereq:"Lance <b>SEO Boost</b> avant : cette fonctionnalité se sert du titre Google créé par SEO Boost. Rien à remplir ici." },
 
-  { id:"collections", num:"6", label:"Collections", ico:"🗂️", section:"Features", exempt:true,
+  { id:"collections", num:"7", label:"Collections", ico:"🗂️", section:"Features", exempt:true,
     desc:"Crée et met à jour les collections de ta boutique avec leur référencement.",
     prereq:"Ces collections sont les <b>mêmes que dans SEO Boost</b> : les modifier ici les modifie aussi là-bas. Le mot-clé de niche et le nom de domaine se règlent dans « Mes données ».",
     fields:[
       {path:"seo_boost.collections", label:"Tes collections", type:"collections", help:"La liste des collections (rayons) de ta boutique. Clique sur « + Ajouter une collection » pour en créer une."},
     ]},
 
-  { id:"politiques", num:"7", label:"Politiques", ico:"⚖️", section:"Features",
+  { id:"politiques", num:"8", label:"Politiques", ico:"⚖️", section:"Features",
     desc:"Remplit les pages légales obligatoires de ta boutique (mentions légales, CGV, retours, confidentialité…) avec tes infos.",
     prereq:"Les modèles de textes sont déjà prêts dans <code>stores/{boutique}/politiques/</code>. Les informations ci-dessous viennent boucher les trous (nom, adresse, email…) dans ces textes.",
     requires:[
@@ -128,18 +145,18 @@ const FEATURES = [
       {path:"legal_info.website_url", label:"Adresse de ton site", type:"text", help:"L'adresse publique de ta boutique, avec https://. Ex : https://ma-boutique.com"},
     ]},
 
-  { id:"transfert", num:"8", label:"Transfert", ico:"🔀", section:"Features",
+  { id:"transfert", num:"9", label:"Transfert", ico:"🔀", section:"Features",
     desc:"Copie tout le contenu d'une boutique (produits, images, avis…) vers une autre boutique. Pratique pour dupliquer une boutique qui marche.",
     info:true, prereq:"Rien à remplir ici : tu choisis la boutique de destination au moment de lancer. Il faut au moins 2 boutiques créées, et une destination vide." },
 
-  { id:"menus", num:"9", label:"Menus", ico:"🧭", section:"Features", exempt:true,
+  { id:"menus", num:"10", label:"Menus", ico:"🧭", section:"Features", exempt:true,
     desc:"Construit les menus de navigation de ta boutique (le menu du haut, le menu du bas de page…).",
     prereq:"Les rayons, pages et politiques que tu ajoutes au menu doivent déjà exister dans ta boutique.",
     fields:[
       {path:"menus", label:"Tes menus", type:"menus", help:"Un menu = un titre + une liste de liens présentés en tableau. Pour chaque lien, choisis vers quoi il pointe : une collection, une page, un article de blog, une adresse libre, ou une page légale. Tu peux ajouter des sous-liens (jusqu'à 3 niveaux)."},
     ]},
 
-  { id:"rebrand", num:"10", label:"Rebrand", ico:"🏷️", section:"Features",
+  { id:"rebrand", num:"11", label:"Rebrand", ico:"🏷️", section:"Features",
     desc:"Cherche-et-remplace en masse : trouve un mot dans TOUTES tes fiches produits et le remplace par un autre.",
     prereq:"Sert surtout quand tu changes de nom de marque ou d'adresse de site : par exemple après avoir copié une boutique. Le remplacement est exact (respecte les majuscules).",
     requires:[ {config:"rebrand.replacements", label:"Au moins un remplacement défini"} ],
@@ -629,7 +646,7 @@ function renderFeature(id) {
   head.className = "feature-head";
   const actions = [];
   if (f.fields || f.files) actions.push(`<button class="primary" id="saveBtn">💾 Enregistrer</button>`);
-  actions.push(`<button class="ghost" id="runBtn">▶︎ Lancer dans le Terminal</button>`);
+  if (f.section === "Features") actions.push(`<button class="ghost" id="runBtn">▶︎ Lancer cette fonctionnalité</button>`);
   head.innerHTML = `
     <div>
       <h1>${f.ico} ${f.label}</h1>
@@ -712,11 +729,13 @@ function renderFeature(id) {
   const saveBtn = document.getElementById("saveBtn");
   if (saveBtn) saveBtn.onclick = () => saveFeature(f, readers, fileEditors);
   const runBtn = document.getElementById("runBtn");
-  if (miss.length) {
-    runBtn.disabled = true;
-    runBtn.title = "Complétez les données requises pour lancer cette fonctionnalité";
-  } else {
-    runBtn.onclick = runCli;
+  if (runBtn) {
+    if (miss.length) {
+      runBtn.disabled = true;
+      runBtn.title = "Complétez les données requises pour lancer cette fonctionnalité";
+    } else {
+      runBtn.onclick = () => runCli(f);
+    }
   }
   const goto = document.getElementById("gotoData");
   if (goto) goto.onclick = () => renderFeature("donnees");
@@ -897,6 +916,97 @@ function renderDataStatus() {
   });
   card.appendChild(list);
   return card;
+}
+
+/* ── Color picker custom (hex) ── */
+function hexToRgb(hex) {
+  const m = hex.replace("#", "");
+  return { r: parseInt(m.slice(0, 2), 16), g: parseInt(m.slice(2, 4), 16), b: parseInt(m.slice(4, 6), 16) };
+}
+function rgbToHex(r, g, b) {
+  const t = x => x.toString(16).padStart(2, "0");
+  return ("#" + t(r) + t(g) + t(b)).toUpperCase();
+}
+function rgbToHsv(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  let hh = 0;
+  if (d) {
+    if (mx === r) hh = ((g - b) / d) % 6;
+    else if (mx === g) hh = (b - r) / d + 2;
+    else hh = (r - g) / d + 4;
+    hh *= 60; if (hh < 0) hh += 360;
+  }
+  return { h: hh, s: mx ? d / mx : 0, v: mx };
+}
+function hsvToHex(h, s, v) {
+  const c = v * s, x = c * (1 - Math.abs((h / 60) % 2 - 1)), m = v - c;
+  let r = 0, g = 0, b = 0;
+  if (h < 60) { r = c; g = x; } else if (h < 120) { r = x; g = c; } else if (h < 180) { g = c; b = x; }
+  else if (h < 240) { g = x; b = c; } else if (h < 300) { r = x; b = c; } else { r = c; b = x; }
+  return rgbToHex(Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255));
+}
+function attachDrag(el, handler) {
+  el.addEventListener("pointerdown", e => {
+    e.preventDefault(); handler(e);
+    const move = ev => handler(ev);
+    const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+}
+/* Popover de sélection couleur (hex). onChange(hex) à chaque changement. */
+function buildColorPopover(initialHex, onChange) {
+  const rgb0 = hexToRgb(/^#[0-9a-fA-F]{6}$/.test(initialHex) ? initialHex : "#FFFFFF");
+  const st = rgbToHsv(rgb0.r, rgb0.g, rgb0.b);   // { h, s, v } — état couleur
+
+  const svThumb  = h("div", { class: "cp-thumb" });
+  const sv       = h("div", { class: "cp-sv" }, svThumb);
+  const hueThumb = h("div", { class: "cp-hue-thumb" });
+  const hue      = h("div", { class: "cp-hue" }, hueThumb);
+  const hexIn    = h("input", { type: "text", class: "cp-hex" });
+  const node     = h("div", { class: "color-pop" }, sv, hue, hexIn);
+
+  const render = (fire = true) => {
+    sv.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent), hsl(${st.h}, 100%, 50%)`;
+    svThumb.style.left  = (st.s * 100) + "%";
+    svThumb.style.top   = ((1 - st.v) * 100) + "%";
+    hueThumb.style.left = (st.h / 360 * 100) + "%";
+    const hex = hsvToHex(st.h, st.s, st.v);
+    svThumb.style.background = hex;
+    hexIn.value = hex;
+    if (fire) onChange(hex);
+  };
+
+  attachDrag(sv, e => {
+    const r = sv.getBoundingClientRect();
+    st.s = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+    st.v = 1 - Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+    render();
+  });
+  attachDrag(hue, e => {
+    const r = hue.getBoundingClientRect();
+    st.h = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * 360;
+    render();
+  });
+  hexIn.addEventListener("input", () => {
+    let val = hexIn.value.trim();
+    if (/^#?[0-9a-fA-F]{6}$/.test(val)) {
+      if (val[0] !== "#") val = "#" + val;
+      const c = hexToRgb(val); const hsv = rgbToHsv(c.r, c.g, c.b);
+      st.h = hsv.h; st.s = hsv.s; st.v = hsv.v; render();
+    }
+  });
+
+  render(false);
+  return {
+    node,
+    setHex(hx) {
+      if (/^#[0-9a-fA-F]{6}$/.test(hx)) {
+        const c = hexToRgb(hx); const hsv = rgbToHsv(c.r, c.g, c.b);
+        st.h = hsv.h; st.s = hsv.s; st.v = hsv.v; render(false);
+      }
+    },
+  };
 }
 
 /* ── Affichage conditionnel des champs (showIf) ── */
@@ -1110,6 +1220,34 @@ function renderField(def) {
     return { el: wrap, read: () => { const out = entries.map(e => e.read()).filter(Boolean); return out.length ? out : undefined; } };
   }
 
+  // color — swatch cliquable + picker hexadécimal custom + saisie libre
+  if (def.type === "color") {
+    const cur      = (val ?? "").trim();
+    const startHex = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur.toUpperCase() : "#FFFFFF";
+    const text     = h("input", { type: "text", placeholder: "#FFFFFF ou « blanc »" }); text.value = cur;
+    const swatch   = h("button", { type: "button", class: "swatch-btn" }); swatch.style.background = startHex;
+
+    const pop = buildColorPopover(startHex, (hex) => { text.value = hex; swatch.style.background = hex; });
+    pop.node.style.display = "none";
+
+    swatch.onclick = () => {
+      const open = pop.node.style.display === "none";
+      pop.node.style.display = open ? "" : "none";
+      if (open && /^#[0-9a-fA-F]{6}$/.test(text.value.trim())) pop.setHex(text.value.trim().toUpperCase());
+    };
+    text.addEventListener("input", () => {
+      const v = text.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) { swatch.style.background = v; pop.setHex(v.toUpperCase()); }
+    });
+
+    const field = h("div", { class: "color-field" }, swatch, text, pop.node);
+    field.addEventListener("click", e => e.stopPropagation());   // clic à l'intérieur ne ferme pas
+    document.addEventListener("click", () => { pop.node.style.display = "none"; });
+
+    wrap.append(labelEl(def.label), field, helpEl(def.help));
+    return { el: wrap, read: () => (text.value.trim() === "" ? undefined : text.value.trim()) };
+  }
+
   // text (défaut)
   wrap.innerHTML = `<label>${def.label}</label><input type="text" value="${escapeAttr(val ?? "")}"/>${help}`;
   const inp = wrap.querySelector("input");
@@ -1141,9 +1279,11 @@ async function saveFeature(feature, readers, fileEditors) {
 }
 
 /* ── Lancer le CLI ── */
-async function runCli() {
+async function runCli(feature) {
   try {
-    const d = await api("POST", "/api/run", {});
+    // Lance directement la feature sur la boutique en cours (sans menu dans le terminal)
+    const body = feature ? { store: STORE, feature: feature.id } : {};
+    const d = await api("POST", "/api/run", body);
     toast(d.message || (d.ok ? "Terminal ouvert" : "Impossible"), d.ok ? "ok" : "err");
   } catch (e) {
     toast(e.message, "err");

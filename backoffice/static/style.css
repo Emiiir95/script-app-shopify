@@ -155,6 +155,34 @@ textarea.json-invalid { border-color: var(--danger); }
 .json-status.ok { color: var(--ok); }
 .json-status.err { color: var(--danger); }
 
+.color-field { position: relative; display: flex; align-items: center; gap: 10px; }
+.color-field .swatch-btn {
+  width: 44px; height: 40px; flex: 0 0 auto; padding: 0; cursor: pointer;
+  border: 1px solid var(--border-mid); border-radius: 9px;
+}
+.color-field input[type=text] { flex: 1; text-transform: uppercase; }
+
+/* popover picker */
+.color-pop {
+  position: absolute; top: 48px; left: 0; z-index: 60; width: 240px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: var(--shadow-lg); padding: 12px;
+}
+.cp-sv { position: relative; width: 100%; height: 150px; border-radius: 8px; cursor: crosshair; }
+.cp-thumb {
+  position: absolute; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); pointer-events: none;
+}
+.cp-hue {
+  position: relative; height: 14px; border-radius: 8px; margin: 14px 0 12px; cursor: pointer;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+.cp-hue-thumb {
+  position: absolute; top: 50%; width: 14px; height: 14px; border: 2px solid #fff; border-radius: 50%;
+  transform: translate(-50%, -50%); box-shadow: 0 0 0 1px rgba(0,0,0,.35); pointer-events: none;
+}
+.cp-hex { width: 100%; }
+
 .switch { display: flex; align-items: center; gap: 12px; padding: 4px 0; }
 .switch input { width: 18px; height: 18px; accent-color: var(--accent); }
 .switch label { margin: 0; font-weight: 500; }

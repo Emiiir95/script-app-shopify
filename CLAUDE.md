@@ -65,17 +65,19 @@ script/
 │   ├── setup/                      ← 0. Crée la structure metafields / metaobjects
 │   ├── seo_boost/                  ← 1. Titres, meta, description HTML, handle, specs (OpenAI)
 │   ├── fiche_produit/              ← 2. Phrase, bénéfices, sections feature (OpenAI)
-│   ├── normalisation/              ← 3. Prix, taxable, stock policy, couleurs (pas d'OpenAI)
-│   ├── reviews/                    ← 4. Génération + injection d'avis clients (OpenAI)
+│   ├── fond_studio/                ← 3. Régénère la 1ère image produit sur fond uni (OpenAI gpt-image-1)
+│   │   ├── runner.py  generator.py  injector.py  prompts.py
+│   ├── normalisation/              ← 4. Prix, taxable, stock policy, couleurs (pas d'OpenAI)
+│   ├── reviews/                    ← 5. Génération + injection d'avis clients (OpenAI)
 │   │   ├── runner.py  generator.py  injector.py  setup.py  prompts.py
-│   ├── seo_images/                 ← 5. Renommage fichiers + alt text
-│   ├── collections/                ← 6. Création/maj collections + SEO (depuis config)
-│   ├── politiques/                 ← 7. Politiques légales + page retour
-│   ├── transfert/                  ← 8. Clone produits+metaobjects vers une autre boutique
+│   ├── seo_images/                 ← 6. Renommage fichiers + alt text
+│   ├── collections/                ← 7. Création/maj collections + SEO (depuis config)
+│   ├── politiques/                 ← 8. Politiques légales + page retour
+│   ├── transfert/                  ← 9. Clone produits+metaobjects vers une autre boutique
 │   │   ├── runner.py  exporter.py  importer.py   (pas de generator/prompts — pas d'OpenAI)
-│   ├── menus/                      ← 9. Menus de navigation (depuis config)
+│   ├── menus/                      ← 10. Menus de navigation (depuis config)
 │   │   ├── runner.py  injector.py
-│   └── rebrand/                    ← 10. Remplacement URL/nom de marque (descriptions + SEO)
+│   └── rebrand/                    ← 11. Remplacement URL/nom de marque (descriptions + SEO)
 │       ├── runner.py  injector.py
 │
 ├── utils/                          ← Utilitaires partagés entre toutes les features
@@ -138,20 +140,21 @@ affiche un message et ne fait rien — elle ne crashe pas.
 | 0 | Setup | — | non | Rien. À lancer en **premier** sur une nouvelle boutique. |
 | 1 | SEO Boost | `seo_boost` | oui | La **description fournisseur** doit être dans le `body_html` de chaque produit (source de tout le contenu généré). Optionnel : `seo_boost/keywords.csv` (SEMrush). |
 | 2 | Fiche Produit | `fiche_produit` | oui | Idem SEO Boost : description fournisseur dans `body_html`. |
-| 3 | Normalisation | `normalisation` | non | Rien. Préserve le status produit. Crée les couleurs manquantes (voir note couleurs). |
-| 4 | Reviews | — (fichiers `.md`) | oui | Remplir `stores/{boutique}/reviews/*.md` + lancer Setup avant. |
-| 5 | SEO Images | `seo_boost` (meta title) | non | Lancer SEO Boost avant (utilise le meta title comme base du nom de fichier). |
-| 6 | Collections | `collections` | oui | Définir les collections dans `config.json`. |
-| 7 | Politiques | `politiques` | non | Remplir les templates HTML dans `stores/{boutique}/politiques/`. |
-| 8 | Transfert | — (choix interactif) | non | Avoir ≥ 2 boutiques dans `stores/`. La **destination** doit être vide ou acceptée en doublon. |
-| 9 | Menus | `menus` | non | Collections/pages/politiques référencées doivent **exister** (créées avant). Scope navigation requis. |
-| 10 | Rebrand | `rebrand` | non | Rien. À lancer typiquement **après un Transfert** pour changer marque/URL. |
+| 3 | Fond Studio | `fond_studio` | oui (image) | Chaque produit doit avoir ≥ 1 photo. Définir `background_color`. ⚠ facturé par image (gpt-image-1). |
+| 4 | Normalisation | `normalisation` | non | Rien. Préserve le status produit. Crée les couleurs manquantes (voir note couleurs). |
+| 5 | Reviews | — (fichiers `.md`) | oui | Remplir `stores/{boutique}/reviews/*.md` + lancer Setup avant. |
+| 6 | SEO Images | `seo_boost` (meta title) | non | Lancer SEO Boost avant (utilise le meta title comme base du nom de fichier). |
+| 7 | Collections | `collections` | oui | Définir les collections dans `config.json`. |
+| 8 | Politiques | `politiques` | non | Remplir les templates HTML dans `stores/{boutique}/politiques/`. |
+| 9 | Transfert | — (choix interactif) | non | Avoir ≥ 2 boutiques dans `stores/`. La **destination** doit être vide ou acceptée en doublon. |
+| 10 | Menus | `menus` | non | Collections/pages/politiques référencées doivent **exister** (créées avant). Scope navigation requis. |
+| 11 | Rebrand | `rebrand` | non | Rien. À lancer typiquement **après un Transfert** pour changer marque/URL. |
 
 **Ordre recommandé sur une boutique neuve :**
-`0 Setup` → importer les produits (avec descriptions fournisseur) → `3 Normalisation` →
-`1 SEO Boost` → `2 Fiche Produit` → `6 Collections` → `9 Menus` → `4 Reviews` →
-`7 Politiques` → `5 SEO Images`.
-(`8 Transfert` + `10 Rebrand` = duplication d'une boutique existante vers une nouvelle.)
+`0 Setup` → importer les produits (avec descriptions fournisseur) → `4 Normalisation` →
+`1 SEO Boost` → `2 Fiche Produit` → `3 Fond Studio` → `7 Collections` → `10 Menus` →
+`5 Reviews` → `8 Politiques` → `6 SEO Images`.
+(`9 Transfert` + `11 Rebrand` = duplication d'une boutique existante vers une nouvelle.)
 
 ---
 
@@ -347,6 +350,37 @@ l'ordre. Sûr à relancer (idempotent une fois les termes remplacés).
 
 ---
 
+## Feature Fond Studio (3) — régénère la 1ère image sur fond uni
+
+Pour chaque produit, envoie la **1ère photo** à **OpenAI gpt-image-1** (`images.edit`) avec un
+prompt strict : remplacer **uniquement le fond** par une **couleur unie**, en gardant le produit
+identique. La nouvelle image est ajoutée en **position 1** (l'ancienne 1ère est conservée, décalée).
+
+**Flow (`generator.py` → `injector.py`) :** fetch produits avec images →
+`download_image(url)` (requests) → `regenerate_on_background(...)` (gpt-image-1, renvoie du PNG) →
+`add_first_image(product_id, bytes, alt, ...)` (REST `POST /products/{id}/images.json`,
+`attachment` base64 + `position: 1`). Checkpoint par produit (reprise auto) + rapport CSV.
+
+**Structure `config.json` :**
+```json
+"fond_studio": {
+  "background_color": "#FFFFFF",   // hex (palette dans le backoffice) ou nom : "beige"
+  "size":           "1024x1024",   // optionnel : 1024x1024 | 1024x1536 | 1536x1024 | auto
+  "output_format":  "png",         // optionnel : png | jpeg | webp
+  "product_status": "all"          // optionnel : all | active | draft (sinon demandé au lancement)
+}
+```
+La qualité gpt-image-1 est fixée à **medium** (normale) côté appli — non configurable.
+
+**Notes :**
+- **Payant** : chaque image est facturée par OpenAI (gpt-image-1, qualité medium). Le runner
+  affiche une **estimation de coût** avant confirmation (~$0.05/image en 1024², ~$0.075 en portrait/paysage).
+- Le prompt demande un produit **100 % identique** ET **recentré** (déplacé/redimensionné en bloc
+  pour être centré, sans altérer son apparence).
+- Rien n'est supprimé : l'ancienne 1ère image reste (en 2ème position).
+
+---
+
 ## Note — modes de titre H1 (SEO Boost 1)
 
 Le H1 produit est construit algorithmiquement par `build_h1` selon la clé `title_style`
@@ -479,6 +513,7 @@ tests/                                   (~360 tests, tous mockés — aucun app
 ├── test_injector.py           ← features/reviews/injector.py   (11)
 ├── test_prompts.py            ← features/reviews/prompts.py     (14)
 ├── test_setup.py              ← features/setup                 (13)
+├── test_fond_studio_*.py      ← features/fond_studio (prompts/generator/injector) (15)
 ├── test_seo_images.py         ← features/seo_images            (32)
 ├── test_collections.py        ← features/collections           (49)
 ├── test_normalisation.py      ← features/normalisation         (22)

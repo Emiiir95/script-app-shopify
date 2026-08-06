@@ -18,7 +18,9 @@ python3 server.py
 Puis ouvre **http://localhost:4747** dans ton navigateur.
 
 - Tu y règles tes boutiques et toutes les fonctionnalités.
-- Le bouton **« Lancer dans le Terminal »** ouvre le programme ci-dessous.
+- Sur une fonctionnalité, le bouton **« Lancer cette fonctionnalité »** ouvre un Terminal
+  qui exécute **directement** cette feature sur la **boutique sélectionnée en haut** —
+  pas besoin de refaire le menu. (⚠ pense à **Enregistrer** avant de lancer.)
 - La page **📊 Activité** montre en direct ce qui se passe.
 
 Pour l'arrêter : `Ctrl+C` dans le Terminal.

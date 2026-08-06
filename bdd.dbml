@@ -1,27 +1,73 @@
 // =====================================================================
-//  Shopify Automation — Modèle de base de données
+//  Shopify Automation — Base de données  (édition BO SaaS)
 //  À coller dans https://dbdiagram.io/home  (format DBML)
 //
-//  Ce schéma remplace l'infra actuelle basée fichiers (config.json,
-//  progress.json, *_cache.json, rapports/*.csv) par une base relationnelle.
-//  Il couvre : auth SaaS, boutiques, configs des features, catalogue miroir,
-//  contenu généré (SEO, fiches, avis), collections, menus, politiques,
-//  transferts, exécutions/reprises et suivi des coûts OpenAI.
+//  PRINCIPE : Shopify est la SOURCE DE VÉRITÉ du catalogue (produits,
+//  collections, menus, politiques, images, avis/metaobjects). Le BO ne
+//  fait qu'orchestrer via API → on ne duplique PAS ces données en base.
+//  On stocke uniquement ce qui est À NOUS : comptes, boutiques connectées,
+//  réglages des features, jobs, crédits/paiements, et un journal d'audit.
 //
-//  Clés primaires en uuid (default gen_random_uuid()) pour tout le modèle,
-//  sauf `migrations` (integer auto-increment — convention ORM).
-//  Relation user → stores : 1 utilisateur possède N boutiques.
+//  - config.json = 1 fichier par boutique → 1 colonne `config` (jsonb) sur stores.
+//  - Contenu généré par l'IA = preview temporaire (jsonb) sur feature_runs,
+//    puis injecté dans Shopify et jeté (pas de tables de contenu).
+//  - PK en uuid (gen_random_uuid()) sauf `migrations` (convention ORM).
 // =====================================================================
 
 
 // ─────────────────────────────────────────────────────────────────────
-//  0. AUTH & INFRA SAAS
+//  ENUMS
 // ─────────────────────────────────────────────────────────────────────
 
 Enum user_role_enum {
   admin
   user
 }
+
+Enum feature_enum {
+  setup
+  seo_boost
+  fiche_produit
+  fond_studio
+  normalisation
+  reviews
+  seo_images
+  collections
+  politiques
+  transfert
+  menus
+  rebrand
+}
+
+Enum run_status {
+  pending
+  running
+  awaiting_validation   // preview généré, en attente de validation user
+  completed
+  failed
+  interrupted
+  cancelled
+}
+
+Enum credit_transaction_type {
+  purchase    // + crédits (achat d'un pack, via webhook)
+  consumption // - crédits (débité par un feature_run)
+  refund      // + crédits (remboursement)
+  bonus       // + crédits offerts (promo, parrainage)
+  adjustment  // +/- correction manuelle (support)
+}
+
+Enum payment_status {
+  pending
+  paid
+  failed
+  refunded
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+//  0. AUTH & SÉCURITÉ
+// ─────────────────────────────────────────────────────────────────────
 
 Table user {
   id                            uuid              [pk, default: `gen_random_uuid()`]
@@ -34,7 +80,7 @@ Table user {
   phone_number                  varchar           [null]
   newsletter                    boolean           [default: false]
   terms_of_use_acceptation_date date              [null]
-  stripe_customer_id            varchar           [null, note: 'lien vers Stripe — tables paiement à venir']
+  stripe_customer_id            varchar           [null, note: 'cus_… — rattache l historique de paiement']
   email_verified                boolean           [default: false]
   billing_address               varchar           [null]
   billing_address_complement    varchar           [null]
@@ -43,10 +89,11 @@ Table user {
   billing_country               varchar           [null]
   preferred_language            varchar(10)       [null]
   last_login_at                 timestamptz       [null]
+  last_login_ip                 varchar(45)       [null, note: 'dernière IP de connexion (IPv4/IPv6)']
   created_at                    timestamptz       [default: `now()`]
   updated_at                    timestamptz       [default: `now()`]
 
-  Note: 'Compte utilisateur du SaaS. Possède N boutiques (stores.user_id).'
+  Note: 'Compte client du SaaS. Possède N boutiques + 1 wallet de crédits.'
 }
 
 Table user_token {
@@ -68,224 +115,72 @@ Table migrations {
   timestamp  bigint    [not null]
   name       varchar   [not null]
 
-  Note: 'Historique des migrations (TypeORM/Knex/…). Géré par l ORM, ne pas éditer à la main.'
+  Note: 'Historique des migrations (TypeORM/Knex…). Géré par l ORM.'
 }
 
-// Anti brute-force : compte les tentatives (login, reset mdp, envoi email…)
-// par cible + identifiant dans une fenêtre de temps → blocage si trop nombreuses.
+// Anti brute-force : compte les tentatives (login, reset mdp…) par cible +
+// identifiant dans une fenêtre de temps → blocage si trop nombreuses.
 Table rate_limit_attempt {
   id          uuid          [pk, default: `gen_random_uuid()`]
-  target      varchar(255)  [not null, note: 'action limitée, ex: login | password_reset | email_verification']
-  identifier  varchar(128)  [not null, note: 'clé de regroupement, ex: email ou IP']
+  target      varchar(255)  [not null, note: 'action limitée : login | password_reset | email_verification']
+  identifier  varchar(128)  [not null, note: 'clé de regroupement : email ou IP']
   created_at  timestamptz   [default: `now()`]
 
   indexes {
     (target, identifier, created_at)
     created_at [note: 'purge des vieilles tentatives']
   }
-  Note: 'Protège les endpoints publics d auth contre le brute-force et le spam.'
+  Note: 'Protège les endpoints publics d auth contre le brute-force.'
 }
+
+// JOURNAL D'AUDIT : trace toute action sensible → qui, quoi, d'où, quand.
+// Sert à détecter/enquêter sur un compte piraté, un usage anormal, une fraude.
+Table audit_log {
+  id          uuid          [pk, default: `gen_random_uuid()`]
+  user_id     uuid          [null, note: 'null si acteur inconnu (ex: login échoué sur email inexistant)']
+  action      varchar       [not null, note: 'login | login_failed | logout | password_changed | email_changed | store_connected | store_token_updated | feature_run_started | credits_purchased | payment_failed | …']
+  ip_address  varchar(45)   [note: 'IPv4/IPv6 de l acteur']
+  user_agent  varchar       [note: 'navigateur/appareil']
+  metadata    jsonb         [note: 'contexte libre : store_id, run_id, montant, ancienne/nouvelle valeur…']
+  created_at  timestamptz   [default: `now()`]
+
+  indexes {
+    (user_id, created_at)
+    action
+    created_at
+  }
+  Note: 'Append-only. Ne jamais UPDATE/DELETE. Rétention conseillée : 1 an+.'
+}
+Ref: audit_log.user_id > user.id [delete: set null]
 
 
 // ─────────────────────────────────────────────────────────────────────
-//  1. BOUTIQUES  (stores/{boutique}/config.json → racine)
+//  1. BOUTIQUES  (connexion Shopify + réglages des features)
 // ─────────────────────────────────────────────────────────────────────
 
 Table stores {
   id            uuid         [pk, default: `gen_random_uuid()`]
-  user_id       uuid         [not null, note: 'propriétaire de la boutique']
-  folder        varchar      [not null, note: 'slug du dossier stores/, ex: atelier-veilleuse']
-  name          varchar      [not null, note: 'nom affiché, ex: L Atelier Veilleuse']
+  user_id       uuid         [not null, note: 'propriétaire']
+  name          varchar      [not null, note: 'nom affiché']
   store_url     varchar      [not null, note: 'xxxx.myshopify.com']
-  access_token  varchar      [not null, note: 'shpat_… (chiffrer en prod)']
+  access_token  varchar      [not null, note: 'token OAuth Shopify — À CHIFFRER en base']
+  config        jsonb        [note: 'ex config.json : réglages seo_boost, fiche_produit, fond_studio, normalisation, collections, menus, rebrand… 1 clé par feature']
+  connected_at  timestamptz  [default: `now()`]
   created_at    timestamptz  [default: `now()`]
   updated_at    timestamptz
 
   indexes {
-    (user_id, folder) [unique, note: 'slug unique PAR utilisateur']
+    (user_id, store_url) [unique]
   }
-  Note: 'Une ligne par boutique, rattachée à un utilisateur (1 user → N stores). Remplace config.json.'
+  Note: '1 boutique Shopify connectée. Le catalogue vit dans Shopify (fetch live via API), pas ici.'
 }
 Ref: stores.user_id > user.id [delete: cascade]
 
-
-// ─────────────────────────────────────────────────────────────────────
-//  2. CONFIG DES FEATURES  (blocs seo_boost / fiche_produit / rebrand…)
-//     Une table par bloc de config.json qui pilote une feature.
-// ─────────────────────────────────────────────────────────────────────
-
-Table seo_boost_config {
-  id                        uuid      [pk, default: `gen_random_uuid()`]
-  store_id                  uuid      [ref: - stores.id, not null]
-  niche_keyword             varchar   [note: 'ex: Veilleuse']
-  title_style               varchar   [note: 'characteristics | branded | seo_branded']
-  branding_mode             varchar   [note: 'ai | theme (si title_style marqué)']
-  branding_position         varchar   [note: 'start | end']
-  vendor                    varchar
-  word_count                integer   [default: 200]
-  generate_meta_description boolean   [default: true]
-  generate_description      boolean   [default: true]
-
-  Note: 'Bloc "seo_boost" — relation 1:1 avec stores.'
-}
-
-// Collections SEO déclarées dans seo_boost (mainCollection + collections[])
-Table seo_boost_collections {
-  id                uuid      [pk, default: `gen_random_uuid()`]
-  seo_boost_id      uuid      [ref: > seo_boost_config.id, not null]
-  name              varchar   [not null]
-  url               varchar
-  search_volume     integer   [note: 'volume SEMrush']
-  is_main           boolean   [default: false, note: 'true = mainCollection']
-  tags              varchar   [note: 'liste de tags (JSON/CSV)']
-}
-
-Table fiche_produit_config {
+// Contexte IA rédigé par l'utilisateur (marketing, personas, réassurance).
+// Réutilisé à chaque génération — pas dans Shopify → on le garde.
+Table ai_context_file {
   id          uuid      [pk, default: `gen_random_uuid()`]
-  store_id    uuid      [ref: - stores.id, not null]
-  enabled     boolean   [default: true]
-  params      varchar   [note: 'paramètres libres du bloc fiche_produit (JSON)']
-
-  Note: 'Bloc "fiche_produit".'
-}
-
-Table normalisation_config {
-  id          uuid      [pk, default: `gen_random_uuid()`]
-  store_id    uuid      [ref: - stores.id, not null]
-  params      varchar   [note: 'règles prix / taxable / stock policy (JSON)']
-
-  Note: 'Bloc "normalisation".'
-}
-
-Table rebrand_rules {
-  id          uuid      [pk, default: `gen_random_uuid()`]
-  store_id    uuid      [ref: > stores.id, not null]
-  from_text   varchar   [not null, note: 'chaîne à remplacer (littéral)']
-  to_text     varchar   [not null]
-  position    integer   [note: 'ordre d application des règles']
-
-  Note: 'Bloc "rebrand".replacements[] — appliqué à descriptionHtml, seo.title, seo.description.'
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-//  3. CATALOGUE  (miroir des produits Shopify + metafields)
-// ─────────────────────────────────────────────────────────────────────
-
-Table products {
-  id                uuid      [pk, default: `gen_random_uuid()`]
-  store_id          uuid      [ref: > stores.id, not null]
-  shopify_gid       varchar   [note: 'gid://shopify/Product/…']
-  shopify_id        bigint    [note: 'id REST']
-  handle            varchar   [not null]
-  title             varchar
-  body_html         text      [note: 'description fournisseur = source du contenu généré']
-  status            varchar   [note: 'active | draft | archived']
-  vendor            varchar
-  seo_title         varchar
-  seo_description   varchar
-  updated_at        timestamptz
-
-  indexes {
-    (store_id, handle) [unique]
-  }
-  Note: 'Miroir local des produits d une boutique.'
-}
-
-Table product_metafields {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  product_id    uuid      [ref: > products.id, not null]
-  namespace     varchar   [not null, default: 'custom']
-  key           varchar   [not null, note: 'ex: note_globale_du_produit, avis_clients_1..8']
-  type          varchar   [note: 'single_line_text_field | metaobject_reference | …']
-  value         text      [note: 'valeur ou GID référencé']
-
-  indexes {
-    (product_id, namespace, key) [unique]
-  }
-}
-
-Table product_images {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  product_id    uuid      [ref: > products.id, not null]
-  shopify_gid   varchar
-  src           varchar
-  alt_text      varchar   [note: 'renseigné par la feature SEO Images']
-  filename      varchar   [note: 'nom de fichier renommé (base = meta title)']
-  position      integer
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-//  4. CONTENU GÉNÉRÉ PAR IA  (SEO Boost, Fiche Produit, Reviews)
-//     Historisé : une ligne par génération, rattaché à un run.
-// ─────────────────────────────────────────────────────────────────────
-
-Table seo_generations {
-  id                uuid      [pk, default: `gen_random_uuid()`]
-  product_id        uuid      [ref: > products.id, not null]
-  run_id            uuid      [ref: > feature_runs.id]
-  handle_original   varchar
-  handle_nouveau    varchar
-  titre_original    varchar
-  h1_nouveau        varchar
-  differentiator    varchar
-  branding_name     varchar
-  meta_title        varchar
-  meta_description  varchar
-  description_html  text
-  injected          boolean   [default: false]
-  created_at        timestamptz [default: `now()`]
-
-  Note: 'Sortie SEO Boost (remplace seo_boost_cache.json + rapports/seo_boost_*.csv).'
-}
-
-Table fiche_generations {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  product_id    uuid      [ref: > products.id, not null]
-  run_id        uuid      [ref: > feature_runs.id]
-  phrase        text
-  benefice_1    varchar
-  benefice_2    varchar
-  benefice_3    varchar
-  titre1        varchar
-  desc1         text
-  titre2        varchar
-  desc2         text
-  image_1_gid   varchar
-  image_2_gid   varchar
-  injected      boolean   [default: false]
-  created_at    timestamptz [default: `now()`]
-
-  Note: 'Sortie Fiche Produit (remplace rapports/fiche_produit_*.csv).'
-}
-
-// Metaobject Shopify "avis_client"
-Table reviews {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  product_id    uuid      [ref: > products.id, not null]
-  run_id        uuid      [ref: > feature_runs.id]
-  slot          integer   [not null, note: '1..8 → metafield avis_clients_N']
-  shopify_gid   varchar   [note: 'gid du metaobject avis_client créé']
-  note          decimal   [note: 'entre 4.5 et 5.0']
-  titre         varchar
-  texte         text
-  nom_auteur    varchar   [note: 'format "Prénom I."']
-  photo_1_gid   varchar
-  photo_2_gid   varchar
-  injected      boolean   [default: false]
-  created_at    timestamptz [default: `now()`]
-
-  indexes {
-    (product_id, slot) [unique]
-  }
-  Note: 'Avis générés. rating_global/review_count agrégés stockés en metafield note_globale_du_produit.'
-}
-
-// Contexte IA par boutique (reviews/*.md, marketing.md, personas, reassurance.md)
-Table ai_context_files {
-  id          uuid      [pk, default: `gen_random_uuid()`]
-  store_id    uuid      [ref: > stores.id, not null]
+  store_id    uuid      [not null]
   kind        varchar   [not null, note: 'marketing | persona1 | persona2 | persona3 | reassurance']
   content     text
   updated_at  timestamptz
@@ -293,137 +188,146 @@ Table ai_context_files {
   indexes {
     (store_id, kind) [unique]
   }
-  Note: 'Remplace stores/{boutique}/reviews/*.md édités via le backoffice.'
+  Note: 'Remplace stores/{boutique}/reviews/*.md.'
 }
+Ref: ai_context_file.store_id > stores.id [delete: cascade]
 
 
 // ─────────────────────────────────────────────────────────────────────
-//  5. COLLECTIONS  (feature 6)
-// ─────────────────────────────────────────────────────────────────────
-
-Table collections {
-  id                uuid      [pk, default: `gen_random_uuid()`]
-  store_id          uuid      [ref: > stores.id, not null]
-  shopify_gid       varchar
-  handle            varchar   [not null]
-  title             varchar
-  seo_title         varchar
-  seo_description   varchar
-  search_volume     integer
-
-  indexes {
-    (store_id, handle) [unique]
-  }
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-//  6. MENUS  (feature 9 — imbrication max 3 niveaux)
-// ─────────────────────────────────────────────────────────────────────
-
-Table menus {
-  id          uuid      [pk, default: `gen_random_uuid()`]
-  store_id    uuid      [ref: > stores.id, not null]
-  handle      varchar   [not null, note: 'main-menu | footer | …']
-  title       varchar
-
-  indexes {
-    (store_id, handle) [unique]
-  }
-}
-
-Table menu_items {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  menu_id       uuid      [ref: > menus.id, not null]
-  parent_id     uuid      [ref: > menu_items.id, note: 'auto-référence — sous-items (3 niveaux max)']
-  title         varchar   [not null]
-  type          varchar   [not null, note: 'FRONTPAGE|CATALOG|COLLECTION|PAGE|BLOG|SHOP_POLICY|HTTP']
-  handle        varchar   [note: 'pour COLLECTION/PAGE/BLOG']
-  policy_type   varchar   [note: 'pour SHOP_POLICY, ex REFUND_POLICY']
-  url           varchar   [note: 'pour HTTP']
-  position      integer
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-//  7. POLITIQUES LÉGALES  (feature 7)
-// ─────────────────────────────────────────────────────────────────────
-
-Table policies {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  store_id      uuid      [ref: > stores.id, not null]
-  policy_type   varchar   [not null, note: 'REFUND_POLICY | PRIVACY_POLICY | TERMS_OF_SERVICE | SHIPPING_POLICY']
-  body_html     text
-  updated_at    timestamptz
-
-  indexes {
-    (store_id, policy_type) [unique]
-  }
-  Note: 'Upsert via shopPolicyUpdate (une politique par appel). + page retour éventuelle.'
-}
-
-
-// ─────────────────────────────────────────────────────────────────────
-//  8. EXÉCUTIONS DES FEATURES  (runs, reprise, coûts)
-//     Remplace progress.json (checkpoint) et le CostTracker.
+//  2. JOBS  (exécutions de features : quoi, quand, combien de crédits)
 // ─────────────────────────────────────────────────────────────────────
 
 Table feature_runs {
-  id                uuid      [pk, default: `gen_random_uuid()`]
-  store_id          uuid      [ref: > stores.id, not null]
-  feature           varchar   [not null, note: 'setup|seo_boost|fiche_produit|normalisation|reviews|seo_images|collections|politiques|transfert|menus|rebrand']
-  status            varchar   [not null, note: 'running | completed | failed | interrupted']
-  last_index        integer   [note: 'reprise : dernier produit traité (ex progress.json)']
-  started_at        timestamptz [default: `now()`]
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  store_id          uuid          [not null]
+  user_id           uuid          [not null, note: 'qui a lancé (dupliqué pour requêtes/audit rapides)']
+  feature           feature_enum  [not null]
+  status            run_status    [not null, default: 'pending']
+
+  params            jsonb         [note: 'entrées du run : options, produits ciblés, boutique dest (transfert)…']
+  progress          jsonb         [note: 'reprise : handles/ids déjà traités, last_index (remplace progress.json)']
+  preview           jsonb         [note: 'contenu généré EN ATTENTE de validation ; vidé après injection Shopify']
+
+  credits_estimated integer       [default: 0, note: 'crédits estimés avant lancement']
+  credits_spent     integer       [default: 0, note: 'crédits réellement débités (détail dans credit_transaction)']
+
+  // Coûts internes OpenAI (ta marge — pas facturé tel quel au client)
+  openai_calls      integer       [default: 0]
+  openai_tokens_in  integer       [default: 0]
+  openai_tokens_out integer       [default: 0]
+  cost_usd          decimal       [default: 0]
+
+  started_at        timestamptz   [default: `now()`]
   finished_at       timestamptz
-  openai_calls      integer   [default: 0]
-  openai_tokens_in  integer   [default: 0]
-  openai_tokens_out integer   [default: 0]
-  cost_usd          decimal   [default: 0, note: 'suivi CostTracker']
   error_message     text
 
-  Note: 'Un run = une exécution d une feature sur une boutique.'
-}
-
-// Reprise fine : produits déjà traités dans un run (ex completed_handles)
-Table run_completed_products {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  run_id        uuid      [ref: > feature_runs.id, not null]
-  product_id    uuid      [ref: > products.id, not null]
-  completed_at  timestamptz [default: `now()`]
-
   indexes {
-    (run_id, product_id) [unique]
+    (store_id, started_at)
+    (user_id, started_at)
+    (feature, status)
   }
-  Note: 'Checkpoint par produit → reprise automatique après crash.'
+  Note: 'Un run = une feature lancée sur une boutique. Répond « quelle feature, quand, combien de crédits ».'
 }
+Ref: feature_runs.store_id > stores.id [delete: cascade]
+Ref: feature_runs.user_id  > user.id   [delete: cascade]
 
 
 // ─────────────────────────────────────────────────────────────────────
-//  9. TRANSFERTS  (feature 8 — clone boutique → boutique, remap GID)
+//  3. CRÉDITS & PAIEMENTS  (pay-as-you-go, Stripe one-time)
 // ─────────────────────────────────────────────────────────────────────
 
-Table transfers {
-  id              uuid      [pk, default: `gen_random_uuid()`]
-  run_id          uuid      [ref: - feature_runs.id]
-  source_store_id uuid      [ref: > stores.id, not null]
-  dest_store_id   uuid      [ref: > stores.id, not null]
-  status          varchar   [note: 'running | completed | failed']
-  created_at      timestamptz [default: `now()`]
+// Barème : combien de crédits coûte chaque feature (par produit traité).
+// Feature normale = 1 ; feature lourde = plus ; feature non-IA = 0.
+Table feature_pricing {
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  feature           feature_enum  [unique, not null]
+  credits_per_unit  integer       [not null, default: 1, note: 'seo_boost=1, collections=2, reviews=1, fond_studio=2, menus/politiques/normalisation…=0']
+  unit              varchar       [default: 'product']
+  active            boolean       [default: true]
+  updated_at        timestamptz
 
-  Note: 'Une opération de clonage complet source → destination.'
+  Note: 'Barème de consommation, modifiable sans redéploiement.'
 }
 
-// Table de correspondance des GID (les GID sont propres à chaque boutique)
-Table transfer_gid_map {
-  id            uuid      [pk, default: `gen_random_uuid()`]
-  transfer_id   uuid      [ref: > transfers.id, not null]
-  object_type   varchar   [not null, note: 'metaobject_definition | metafield_definition | file | metaobject | product | product_metafield']
-  source_gid    varchar   [not null]
-  dest_gid      varchar
+// Packs achetables (miroir des Prices Stripe one-time).
+Table credit_pack {
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  stripe_price_id   varchar       [unique, note: 'price_… (source de vérité du tarif)']
+  stripe_product_id varchar       [note: 'prod_…']
+  name              varchar       [not null, note: 'ex: Pack 252 crédits']
+  credits           integer       [not null]
+  price_cents       integer       [not null]
+  currency          varchar(3)    [default: 'eur']
+  active            boolean       [default: true]
+
+  Note: 'Catalogue des packs. Tarif réel = Stripe ; ceci est un miroir d affichage.'
+}
+
+// Portefeuille : 1 par user. balance/total_* sont des CACHES ;
+// la vérité = le ledger credit_transaction.
+Table credit_wallet {
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  user_id           uuid          [unique, not null]
+  balance           integer       [default: 0, note: 'solde actuel = SUM(amount)']
+  total_purchased   integer       [default: 0, note: 'cumul crédits achetés (affichage)']
+  total_spent       integer       [default: 0, note: 'cumul crédits dépensés (affichage)']
+  updated_at        timestamptz
+
+  Note: 'Répond « combien acheté / dépensé / actuellement ».'
+}
+Ref: credit_wallet.user_id > user.id [delete: cascade]
+
+// Achats one-time (miroir Stripe Checkout mode=payment).
+Table payment {
+  id                          uuid            [pk, default: `gen_random_uuid()`]
+  user_id                     uuid            [not null]
+  credit_pack_id              uuid            [note: 'pack acheté']
+  stripe_checkout_session_id  varchar         [unique, note: 'cs_… — idempotence commande']
+  stripe_payment_intent_id    varchar         [note: 'pi_…']
+  amount_cents                integer         [not null, note: 'combien il a PAYÉ (en centimes)']
+  currency                    varchar(3)      [default: 'eur']
+  credits_granted             integer         [not null]
+  status                      payment_status  [default: 'pending']
+  created_at                  timestamptz     [default: `now()`]
 
   indexes {
-    (transfer_id, object_type, source_gid) [unique]
+    (user_id, created_at)
   }
-  Note: 'Remap {source_gid → dest_gid} utilisé pendant l import.'
+  Note: 'Un achat de pack. paid via webhook → crédite le wallet.'
+}
+Ref: payment.user_id       > user.id [delete: cascade]
+Ref: payment.credit_pack_id > credit_pack.id
+
+// LEDGER append-only : chaque mouvement de crédits. Solde = SUM(amount).
+Table credit_transaction {
+  id            uuid                      [pk, default: `gen_random_uuid()`]
+  wallet_id     uuid                      [not null]
+  type          credit_transaction_type  [not null]
+  amount        integer                   [not null, note: 'signé : + crédit, - débit']
+  balance_after integer                   [note: 'solde après ce mouvement (audit)']
+  payment_id    uuid                      [note: 'si purchase → l achat source']
+  run_id        uuid                      [note: 'si consumption → le run qui a consommé']
+  description   varchar
+  created_at    timestamptz               [default: `now()`]
+
+  indexes {
+    (wallet_id, created_at)
+    type
+  }
+  Note: 'Grand livre immuable. Ne jamais UPDATE/DELETE — on ajoute des lignes.'
+}
+Ref: credit_transaction.wallet_id  > credit_wallet.id [delete: cascade]
+Ref: credit_transaction.payment_id > payment.id
+Ref: credit_transaction.run_id     > feature_runs.id
+
+// Journal des webhooks Stripe → idempotence (ne jamais traiter 2× le même).
+Table stripe_event {
+  id                uuid          [pk, default: `gen_random_uuid()`]
+  stripe_event_id   varchar       [unique, not null, note: 'evt_… — clé d idempotence']
+  type              varchar       [not null, note: 'checkout.session.completed | charge.refunded | …']
+  payload           jsonb         [note: 'corps brut (debug/rejeu)']
+  processed_at      timestamptz   [note: 'null tant que non traité']
+  created_at        timestamptz   [default: `now()`]
+
+  Note: 'On enregistre l event AVANT de le traiter ; si déjà présent → skip.'
 }

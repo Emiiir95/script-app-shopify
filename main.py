@@ -19,6 +19,7 @@ Lancement :
 import sys
 import os
 import json
+import argparse
 import importlib
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -31,14 +32,15 @@ FEATURES = {
     "0": ("Setup          — Créer la structure metafields / metaobjects",            "features.setup.runner"),
     "1": ("SEO Boost      — Titres, descriptions, meta title, handle produit, specs","features.seo_boost.runner"),
     "2": ("Fiche Produit  — Phrase, bénéfices, sections feature (images)",           "features.fiche_produit.runner"),
-    "3": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
-    "4": ("Reviews        — Génération et injection d'avis clients",                 "features.reviews.runner"),
-    "5": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
-    "6": ("Collections    — Création/mise à jour collections + SEO (depuis config)",  "features.collections.runner"),
-    "7": ("Politiques     — Injection politiques légales + page retour",              "features.politiques.runner"),
-    "8": ("Transfert      — Copier produits + metaobjects vers autre boutique",       "features.transfert.runner"),
-    "9": ("Menus          — Création/mise à jour menus de navigation (depuis config)", "features.menus.runner"),
-   "10": ("Rebrand        — Remplacement URL/nom de marque dans descriptions et SEO",  "features.rebrand.runner"),
+    "3": ("Fond Studio    — Régénère la 1ère image produit sur un fond uni (IA)",     "features.fond_studio.runner"),
+    "4": ("Normalisation  — Prix, taxable, stock policy, status produit",            "features.normalisation.runner"),
+    "5": ("Reviews        — Génération et injection d'avis clients",                 "features.reviews.runner"),
+    "6": ("SEO Images     — Renommage fichiers + alt text via meta title",            "features.seo_images.runner"),
+    "7": ("Collections    — Création/mise à jour collections + SEO (depuis config)",  "features.collections.runner"),
+    "8": ("Politiques     — Injection politiques légales + page retour",              "features.politiques.runner"),
+    "9": ("Transfert      — Copier produits + metaobjects vers autre boutique",       "features.transfert.runner"),
+   "10": ("Menus          — Création/mise à jour menus de navigation (depuis config)", "features.menus.runner"),
+   "11": ("Rebrand        — Remplacement URL/nom de marque dans descriptions et SEO",  "features.rebrand.runner"),
 }
 
 
@@ -134,7 +136,62 @@ def select_feature(store_name):
         return module_path
 
 
+# ── Lancement direct (depuis le backoffice) ────────────────────────────────────
+
+def _feature_id_to_module():
+    """Retourne { id_feature: module_path } — ex: 'fond_studio' → 'features.fond_studio.runner'."""
+    return {mp.split(".")[1]: mp for (_, mp) in FEATURES.values()}
+
+
+def find_store_by_folder(folder):
+    """Retourne (config, store_path) pour le dossier boutique donné, sinon (None, None)."""
+    for name, store_path, config_path in list_stores():
+        if name == folder:
+            with open(config_path, encoding="utf-8") as f:
+                return json.load(f), store_path
+    return None, None
+
+
+def run_direct(store_folder, feature_id):
+    """
+    Lance une feature directement sur une boutique, sans menu interactif.
+    Appelé quand main.py reçoit --store et --feature (bouton « Lancer » du backoffice).
+    """
+    global_env = load_global_env()
+    openai_key = global_env.get("OPENAI_API_KEY", "")
+
+    store_config, store_path = find_store_by_folder(store_folder)
+    if not store_config:
+        print(f"\n[ERREUR] Boutique introuvable : {store_folder!r}")
+        sys.exit(1)
+    store_config["openai_key"] = openai_key
+
+    module_path = _feature_id_to_module().get(feature_id)
+    if not module_path:
+        print(f"\n[ERREUR] Fonctionnalité inconnue : {feature_id!r}")
+        sys.exit(1)
+
+    print("=" * 60)
+    print(f"  Lancement direct — {feature_id}  →  {store_config.get('name', store_folder)}")
+    print("=" * 60)
+
+    module = importlib.import_module(module_path)
+    module.run(store_config, store_path)
+
+    input("\n[Terminé] Appuyez sur Entrée pour fermer cette fenêtre...")
+
+
 def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--store")
+    parser.add_argument("--feature")
+    cli, _ = parser.parse_known_args()
+
+    # Mode direct : boutique + feature fournies → on lance et on sort
+    if cli.store and cli.feature:
+        run_direct(cli.store, cli.feature)
+        return
+
     print("=" * 60)
     print("  Shopify Automation")
     print("=" * 60)
