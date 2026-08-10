@@ -10,6 +10,9 @@ stores/*/
 # Logs
 logs/
 
+# Cache (taxonomie Shopify téléchargée, etc.)
+cache/
+
 # ── Python ─────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]

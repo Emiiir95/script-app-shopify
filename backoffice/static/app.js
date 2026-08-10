@@ -49,11 +49,31 @@ const FEATURES = [
     desc:"Réécrit automatiquement les titres, les descriptions et les infos Google de tes produits pour qu'ils soient mieux trouvés et plus vendeurs.",
     prereq:"Chaque produit doit déjà avoir la <b>description du fournisseur</b> dans sa fiche Shopify : c'est la matière première que l'IA reformule. Sans elle, le résultat est vide. Le mot-clé de niche se règle dans « Mes données ».",
     fields:[
+      {path:"seo_boost.niche_mode", label:"Type de boutique", type:"select", options:[
+        ["fixed","Mono-niche — le même mot-clé au début de tous les titres"],
+        ["thematic","Thématique — l'IA détecte le vrai type de chaque produit (boîte à montre, porte-bijoux, armoire…)"],
+      ], help:"Choisis « Thématique » si tu vends plusieurs catégories : l'IA lira la description de chaque produit et mettra son VRAI type en début de titre (au lieu de forcer le mot-clé de niche partout). « Mono-niche » convient si toute ta boutique est une seule catégorie."},
+      {path:"seo_boost.niches", label:"Les niches de ta boutique", type:"list",
+        showIf:{path:"seo_boost.niche_mode", equals:"thematic"},
+        help:"Une niche par ligne (ex : Boîte à Bijoux, Boîte à Montre, Porte Bijoux, Armoire à Bijoux, Arbre à Bijoux). Pour chaque produit, l'IA choisit LA niche de cette liste qui lui correspond (d'après la description) et l'utilise en début de titre — avec l'orthographe exacte que tu écris ici. Laisse vide pour laisser l'IA proposer un type libre."},
       {path:"seo_boost.title_style", label:"Style des titres de produits", type:"select", options:[
         ["characteristics","Sans marque — juste les caractéristiques (ex : « Arbre à Chat XXL Bois »)"],
         ["branded","Avec marque, titre court (ex : « Nid – Arbre à Chat XXL »)"],
         ["seo_branded","Avec marque + toutes les caractéristiques (ex : « Nid – Arbre à Chat XXL Bois Design »)"],
       ], help:"Choisis à quoi ressemblent les titres : uniquement les mots-clés, ou avec en plus un nom de marque inventé."},
+      {path:"seo_boost.natural_titles", label:"Titres naturels rédigés par l'IA (recommandé)", type:"bool",
+        help:"Activé : l'IA écrit un titre naturel et lisible — le mot-clé/niche en tête quand c'est fluide, sinon le vrai nom du produit (ex : « Support à Colliers » au lieu de « Porte Bijoux Support Collier »), sans empiler les mots-clés. Conforme aux bonnes pratiques SEO 2026. Décoché : ancien format « niche + attributs empilés »."},
+      {path:"seo_boost.title_use_image", label:"Montrer la 1ère photo à l'IA pour le titre", type:"bool",
+        showIf:{path:"seo_boost.natural_titles", equals:true},
+        help:"Envoie la 1ère image du produit à l'IA (en basse résolution, quasi gratuit) pour qu'elle « voie » le produit : couleur, forme, matière. Utile surtout si tes descriptions sont pauvres. Améliore la justesse du titre. Ne marche qu'avec les titres naturels activés."},
+      {path:"seo_boost.title_attributes", label:"Que mettre dans les titres de produits ?", type:"checks", options:[
+        ["commercial_keyword","Mot-clé commercial (ex : XXL, Design, Mural)"],
+        ["dimensions","Dimensions / taille (ex : 10cm, 180cm)"],
+        ["feature","Fonction (ex : Musicale, Rangement, Voyage)"],
+        ["material","Matériau (ex : Bois, Cuir, Velours)"],
+        ["style","Style (ex : Moderne, Design, Élégant)"],
+        ["color","Couleur (ex : Beige, Noir, Rose)"],
+      ], help:"Coche ce que l'IA a le droit de mettre dans les titres. Décoche pour l'exclure (ex : décoche « Couleur » → aucun titre n'aura de couleur). Tout est coché par défaut."},
       {path:"seo_boost.branding_mode", label:"D'où vient le nom de marque ?", type:"select", options:[
         ["theme","Ma liste — je donne les noms moi-même (voir plus bas)"],
         ["ai","L'IA invente un nom unique pour chaque produit"],
@@ -78,9 +98,19 @@ const FEATURES = [
   { id:"fond_studio", num:"3", label:"Fond Studio", ico:"🎨", section:"Features",
     desc:"Régénère la 1ère image de chaque produit sur un fond de couleur unie (IA). Le produit reste identique, seul le fond change.",
     prereq:"Chaque produit doit avoir au moins une photo. La nouvelle image devient la 1ère (l'ancienne est gardée juste après). ⚠ Chaque image générée est facturée par OpenAI.",
-    requires:[ {config:"fond_studio.background_color", label:"Couleur du fond définie"} ],
     fields:[
-      {path:"fond_studio.background_color", label:"Couleur du fond", type:"color", help:"Clique sur la pastille pour choisir dans la palette, ou tape un code hexadécimal (ex : #F5F5F5). Tu peux aussi écrire un nom comme « blanc » ou « beige »."},
+      {path:"fond_studio.background_type", label:"Type de fond", type:"select", options:[
+        ["color","Couleur unie"],["scene","Mise en scène (décor par style)"],
+      ], help:"Soit un fond de couleur unie (studio), soit une mise en scène : l'IA place ton produit dans un décor selon le style choisi."},
+      {path:"fond_studio.background_color", label:"Couleur du fond", type:"color",
+        showIf:{path:"fond_studio.background_type", equals:"color"},
+        help:"Clique sur la pastille pour choisir dans la palette, ou tape un code hexadécimal (ex : #F5F5F5). Tu peux aussi écrire un nom comme « blanc » ou « beige »."},
+      {path:"fond_studio.scene_template", label:"Style de mise en scène", type:"select",
+        showIf:{path:"fond_studio.background_type", equals:"scene"}, options:[
+          ["minimaliste","Minimaliste / épuré"],["luxe","Luxe / premium"],["mode","Mode / fashion"],
+          ["nature","Nature / bois"],["beaute","Beauté / cosmétique"],["maison","Maison / déco"],
+          ["tech","Tech / moderne"],["cuisine","Cuisine / food"],["enfant","Enfant / kids"],["sport","Sport / dynamique"],
+        ], help:"Le décor dans lequel l'IA place ton produit (le produit reste identique, seul le fond change). Choisis selon ta niche."},
       {path:"fond_studio.output_format", label:"Format du fichier image", type:"select", options:[
         ["png","PNG — qualité max"],["jpeg","JPG — léger"],["webp","WEBP — léger et moderne"],
       ], help:"Le format dans lequel la nouvelle image sera enregistrée."},
@@ -90,14 +120,40 @@ const FEATURES = [
       {path:"fond_studio.product_status", label:"Quels produits traiter ?", type:"select", options:[
         ["all","Tous les produits"],["active","Actifs uniquement"],["draft","Brouillons uniquement"],
       ], help:"Traiter tous tes produits, ou seulement ceux qui sont en ligne (actifs) ou en brouillon."},
+      {path:"fond_studio.reference_images", label:"Images de référence envoyées à l'IA", type:"select", options:[
+        ["1","1 image (la principale) — le moins cher"],
+        ["2","Jusqu'à 2 images"],
+        ["3","Jusqu'à 3 images"],
+        ["4","Jusqu'à 4 images — plus fidèle, plus cher"],
+      ], help:"Plus tu envoies d'angles du produit (photos suivantes), mieux l'IA le comprend et le garde fidèle — mais chaque image en plus augmente un peu le coût. L'estimation de coût s'ajuste avant le lancement."},
     ]},
 
   { id:"normalisation", num:"4", label:"Normalisation", ico:"🎚️", section:"Features",
-    desc:"Met de l'ordre dans tous tes produits d'un coup : prix, taxes, gestion du stock, couleurs. Uniformise sans toucher au reste.",
-    prereq:"Le nom du fabricant (« vendor ») appliqué à chaque produit sera automatiquement le nom de ta boutique.",
+    desc:"Met de l'ordre dans tous tes produits d'un coup : prix, taxes, gestion du stock, fabricant, catégorie, couleurs. Uniformise sans toucher au reste.",
+    prereq:"Le nom du fabricant (« vendor ») appliqué à chaque produit sera automatiquement le nom de ta boutique. Coche ci-dessous <b>seulement</b> les parties que tu veux que la normalisation applique.",
     fields:[
-      {path:"normalisation.product_category_name", label:"Catégorie des produits (en français)", type:"text", help:"La famille de tes produits selon Shopify. Ex : « Arbres à chat et tours »."},
-      {path:"normalisation.product_category_search", label:"Même catégorie mais en anglais", type:"text", help:"Shopify cherche la catégorie en anglais. Écris la même chose en anglais. Ex : « Cat Trees & Towers »."},
+      {path:"normalisation.steps", label:"Que doit faire la normalisation ?", type:"checks", options:[
+        ["prix","Prix — vide le prix barré et applique la règle de prix choisie ci-dessous"],
+        ["stock_taxes","Stock, taxes & livraison — hors taxe, « refuser les commandes » en rupture, expédition requise, traité manuellement"],
+        ["fournisseur","Fabricant (vendor) — met le nom de ta boutique sur chaque produit"],
+        ["categorie","Catégorie Shopify — classe les produits dans la catégorie choisie ci-dessous"],
+        ["couleurs","Couleurs — crée les pastilles de couleur (swatches) et les relie aux variantes"],
+      ], help:"Coche uniquement ce que la normalisation doit modifier. Décoche une partie pour la laisser <b>intacte</b> (ex : décoche « Prix » → aucun prix ne bouge). Tout est coché par défaut."},
+      {path:"normalisation.price_mode", label:"Gestion des prix", type:"select", options:[
+        ["keep_price","Garder le prix, enlever le prix barré"],
+        ["use_compare","Mettre le prix barré comme prix, puis l'enlever"],
+        ["max","Garder le plus élevé des deux (par défaut)"],
+      ], showIf:{path:"normalisation.steps.prix", not:false},
+      help:"Dans tous les cas le <b>prix barré (promo) est vidé</b>. Exemple : prix 20€ / prix barré 50€ → « Garder le prix » donne <b>20€</b> · « Mettre le prix barré » donne <b>50€</b> · « Le plus élevé » donne <b>50€</b>."},
+      {path:"normalisation.category_rules", label:"Catégories par type de produit (boutique thématique)", type:"catrules",
+        showIf:{path:"normalisation.steps.categorie", not:false},
+        help:"Si ta boutique vend plusieurs types de produits, ajoute une ligne par catégorie. À gauche : des <b>mots-clés</b> (séparés par des virgules) que l'appli cherche dans le titre/type/tags du produit. À droite : le <b>nom exact de la catégorie Shopify en français</b> (tel qu'affiché dans ton admin). La <b>1ère ligne dont un mot-clé correspond gagne</b> → mets le plus précis en premier (ex : « montre » avant « boîte »). Un produit qui ne correspond à aucune ligne prend la catégorie par défaut ci-dessous. Laisse vide si tu n'as qu'une seule catégorie."},
+      {path:"normalisation.product_category_name", label:"Catégorie par défaut (en français)", type:"text",
+        showIf:{path:"normalisation.steps.categorie", not:false},
+        help:"Catégorie appliquée aux produits qui ne correspondent à aucune règle ci-dessus (ou à TOUS les produits si tu n'as pas mis de règle). Nom exact tel qu'affiché dans ton admin Shopify. Ex : « Boîtes à bijoux »."},
+      {path:"normalisation.product_category_search", label:"Terme de recherche (optionnel)", type:"text",
+        showIf:{path:"normalisation.steps.categorie", not:false},
+        help:"Laisse <b>vide</b> dans la plupart des cas : l'appli cherche directement avec le nom français ci-dessus. Ne remplis ce champ que si la recherche échoue et que tu veux forcer un autre terme (ex : le terme anglais « Jewelry Boxes »)."},
     ]},
 
   { id:"reviews", num:"5", label:"Reviews", ico:"⭐", section:"Features",
@@ -120,8 +176,10 @@ const FEATURES = [
     desc:"Renomme les fichiers image et ajoute une description cachée (alt text) pour que Google Images comprenne tes photos.",
     info:true, prereq:"Lance <b>SEO Boost</b> avant : cette fonctionnalité se sert du titre Google créé par SEO Boost. Rien à remplir ici." },
 
-  { id:"collections", num:"7", label:"Collections", ico:"🗂️", section:"Features", exempt:true,
+  { id:"collections", num:"7", label:"Collections", ico:"🗂️", section:"Features",
+    runLabel:"🔁 Régénérer le texte de toutes les collections",
     desc:"Crée et met à jour les collections de ta boutique avec leur référencement.",
+    requires:[ {config:"seo_boost.collections", label:"Au moins une collection définie"} ],
     prereq:"Ces collections sont les <b>mêmes que dans SEO Boost</b> : les modifier ici les modifie aussi là-bas. Le mot-clé de niche et le nom de domaine se règlent dans « Mes données ».",
     fields:[
       {path:"seo_boost.collections", label:"Tes collections", type:"collections", help:"La liste des collections (rayons) de ta boutique. Clique sur « + Ajouter une collection » pour en créer une."},
@@ -151,9 +209,9 @@ const FEATURES = [
 
   { id:"menus", num:"10", label:"Menus", ico:"🧭", section:"Features", exempt:true,
     desc:"Construit les menus de navigation de ta boutique (le menu du haut, le menu du bas de page…).",
-    prereq:"Les rayons, pages et politiques que tu ajoutes au menu doivent déjà exister dans ta boutique.",
+    prereq:"Les <b>collections</b> proposées dans les menus sont récupérées <b>en direct depuis ta boutique Shopify</b> (toutes, y compris tes collections parentes créées à la main). Les pages/politiques référencées doivent déjà exister.",
     fields:[
-      {path:"menus", label:"Tes menus", type:"menus", help:"Un menu = un titre + une liste de liens présentés en tableau. Pour chaque lien, choisis vers quoi il pointe : une collection, une page, un article de blog, une adresse libre, ou une page légale. Tu peux ajouter des sous-liens (jusqu'à 3 niveaux)."},
+      {path:"menus", label:"Tes menus", type:"menus", help:"Un menu = un titre + une liste de liens présentés en tableau. Pour un lien « collection », choisis dans la liste déroulante (toutes tes collections Shopify réelles). Tu peux aussi pointer vers une page, un blog, une adresse libre ou une page légale, et ajouter des sous-liens (jusqu'à 3 niveaux)."},
     ]},
 
   { id:"rebrand", num:"11", label:"Rebrand", ico:"🏷️", section:"Features",
@@ -172,6 +230,8 @@ let CFG   = null;   // config.json complet chargé
 let CURRENT = null; // feature id
 let FILES = {};     // { "reviews/marketing.md": contenu, ... } — cache des fichiers d'entrée
 let activityTimer = null; // rafraîchissement auto du journal (page Activité)
+let SHOP_RES = null;   // { collections, pages, blogs } récupérés EN DIRECT depuis Shopify (pour les menus)
+let resLoading = false; // évite les fetch concurrents / la ré-entrance
 
 /* Tous les fichiers d'entrée (data utilisateur) regroupés sur la page « Mes données » */
 const ALL_FILES = [
@@ -191,12 +251,20 @@ const GLOBAL_REQUIRES = [
   { config: "seo_boost.niche_keyword", label: "Mot-clé de niche" },
 ];
 
-/* Un requirement est satisfait ? (config non vide, ou fichier non vide) */
+/* Valeurs par défaut du template = « non rempli » (à remplacer avant de générer). */
+const PLACEHOLDERS = new Set([
+  "nom de la boutique", "votre-boutique.myshopify.com",
+  "shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx", "votre niche ici", "votre niche",
+  "ma boutique", "nom de l'entreprise sas", "contact@votre-domaine.com",
+]);
+
+/* Un requirement est satisfait ? (config non vide/non-placeholder, ou fichier non vide) */
 function reqSatisfied(req) {
   if (req.file) return (FILES[req.file] || "").trim() !== "";
   const v = getPath(CFG, req.config);
   if (v == null || v === "") return false;
   if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "string" && PLACEHOLDERS.has(v.trim().toLowerCase())) return false;  // placeholder = à remplir
   return true;
 }
 
@@ -300,36 +368,38 @@ function buildMenuItems(container, items, depth) {
     it = it || {};
     const title = h("input", { type: "text", placeholder: "Libellé" }); title.value = it.title || "";
     const type = h("select", {});
+    const curType = (it.type || "").toUpperCase();
     MENU_ITEM_TYPES.forEach(t => {
       const o = h("option", { value: t }, MENU_TYPE_LABELS[t] || t);
-      if ((it.type || "").toUpperCase() === t) o.selected = true;
+      if (curType === t) o.selected = true;
       type.append(o);
     });
+    // Type Shopify système importé mais non géré par l'éditeur (SEARCH,
+    // CUSTOMER_ACCOUNT_PAGE…) : on le préserve tel quel pour ne rien corrompre.
+    if (curType && !MENU_ITEM_TYPES.includes(curType)) {
+      const o = h("option", { value: curType }, curType + " (Shopify — non modifiable)");
+      o.selected = true;
+      type.append(o);
+    }
     const dyn = h("span", { class: "item-dyn" });
     let dynRead = () => ({});
 
     function refreshDyn() {
       dyn.innerHTML = "";
       const tv = type.value;
-      if (tv === "COLLECTION") {
-        // Menu déroulant des collections déjà définies (Mes collections / SEO Boost)
-        const s = h("select", {});
-        s.append(h("option", { value: "" }, "— choisir une collection —"));
-        const opts = collectionOptions();
-        let found = false;
-        opts.forEach(c => {
-          const o = h("option", { value: c.handle }, c.name);
-          if (it.handle === c.handle) { o.selected = true; found = true; }
-          s.append(o);
-        });
-        // Conserve une valeur déjà saisie même si la collection n'est pas (encore) dans la liste
-        if (it.handle && !found) {
-          const o = h("option", { value: it.handle }, it.handle + " (hors liste)"); o.selected = true; s.append(o);
+      if (["COLLECTION", "PAGE", "BLOG"].includes(tv)) {
+        // Combobox recherchable peuplé EN DIRECT depuis Shopify. Repli saisie libre.
+        const opts = tv === "COLLECTION" ? collectionOptions() : tv === "PAGE" ? pageOptions() : blogOptions();
+        const kind = tv === "COLLECTION" ? "collection" : tv === "PAGE" ? "page" : "blog";
+        if (opts.length) {
+          const picker = buildResourcePicker(opts, it.handle, kind, (handle, name) => {
+            if (name) title.value = name;   // auto-remplit le libellé avec le nom choisi
+          });
+          dyn.append(picker.node); dynRead = () => ({ handle: picker.read() });
+        } else {
+          const i = h("input", { type: "text", placeholder: "identifiant (ex : contact)" }); i.value = it.handle || "";
+          dyn.append(i); dynRead = () => ({ handle: i.value.trim() });
         }
-        dyn.append(s); dynRead = () => ({ handle: s.value });
-      } else if (tv === "PAGE" || tv === "BLOG") {
-        const i = h("input", { type: "text", placeholder: "identifiant (ex : contact)" }); i.value = it.handle || "";
-        dyn.append(i); dynRead = () => ({ handle: i.value.trim() });
       } else if (tv === "HTTP") {
         const i = h("input", { type: "text", placeholder: "adresse (ex : /apps/... ou https://...)" }); i.value = it.url || "";
         dyn.append(i); dynRead = () => ({ url: i.value.trim() });
@@ -406,6 +476,11 @@ function buildMenuItems(container, items, depth) {
 /* Liste des collections déjà déclarées (seo_boost.collections) → [{handle, name}]
    pour proposer un menu déroulant dans les items de menu de type COLLECTION. */
 function collectionOptions() {
+  // 1) En priorité : TOUTES les collections récupérées en direct depuis Shopify
+  if (SHOP_RES && SHOP_RES.collections.length) {
+    return SHOP_RES.collections.map(c => ({ handle: c.handle, name: c.title || c.handle }));
+  }
+  // 2) Repli : les collections déclarées dans la config (seo_boost.collections)
   const cols = getPath(CFG, "seo_boost.collections");
   if (!Array.isArray(cols)) return [];
   return cols.map(c => {
@@ -413,6 +488,58 @@ function collectionOptions() {
     if (c.url && c.url.includes("/collections/")) handle = c.url.split("/collections/")[1].replace(/\/+$/, "");
     return { handle, name: c.name || handle };
   }).filter(c => c.handle);
+}
+
+/* Options live pour pages / blogs Shopify (vide si non chargé → saisie libre). */
+function pageOptions() { return (SHOP_RES && SHOP_RES.pages || []).map(p => ({ handle: p.handle, name: p.title || p.handle })); }
+function blogOptions() { return (SHOP_RES && SHOP_RES.blogs || []).map(b => ({ handle: b.handle, name: b.title || b.handle })); }
+
+/* Combobox recherchable : tape pour filtrer, clique pour choisir. onPick(handle, name).
+   Retourne { node, read }. read() → le handle sélectionné (ou le texte tapé en repli). */
+function buildResourcePicker(options, currentHandle, kind, onPick) {
+  const input = h("input", { type: "text", placeholder: "Rechercher une " + kind + "…" });
+  const list  = h("div", { class: "res-list" }); list.style.display = "none";
+  const wrap  = h("div", { class: "res-picker" }, input, list);
+
+  let selectedHandle = currentHandle || "";
+  const cur = options.find(o => o.handle === currentHandle);
+  input.value = cur ? cur.name : (currentHandle || "");
+
+  const renderList = (filter) => {
+    list.innerHTML = "";
+    const f = (filter || "").toLowerCase();
+    const matches = options
+      .filter(o => o.name.toLowerCase().includes(f) || o.handle.toLowerCase().includes(f))
+      .slice(0, 50);
+    if (!matches.length) { list.append(h("div", { class: "res-empty" }, "Aucun résultat")); return; }
+    matches.forEach(o => {
+      const item = h("div", { class: "res-item" },
+        h("span", { class: "res-name" }, o.name),
+        h("span", { class: "res-handle" }, o.handle));
+      item.onclick = () => {
+        selectedHandle = o.handle;
+        input.value = o.name;
+        list.style.display = "none";
+        onPick(o.handle, o.name);
+      };
+      list.append(item);
+    });
+  };
+
+  input.addEventListener("focus", () => { renderList(input.value); list.style.display = ""; });
+  input.addEventListener("input", () => { selectedHandle = ""; renderList(input.value); list.style.display = ""; });
+  wrap.addEventListener("click", e => e.stopPropagation());
+  document.addEventListener("click", () => { list.style.display = "none"; });
+
+  return {
+    node: wrap,
+    read: () => {
+      if (selectedHandle) return selectedHandle;
+      const typed = input.value.trim();
+      const match = options.find(o => o.name.toLowerCase() === typed.toLowerCase() || o.handle === typed);
+      return match ? match.handle : typed;   // repli : handle saisi librement
+    },
+  };
 }
 
 /* Nom de domaine du site (normalisé, sans slash final), lu depuis la config. */
@@ -593,6 +720,141 @@ async function selectStore(folder) {
   await loadFiles();
   renderSidebar();
   renderFeature(CURRENT || FEATURES[0].id);
+  loadShopifyResources();   // en arrière-plan : collections/pages/blogs live pour les menus
+}
+
+/* Récupère (ou rafraîchit) en direct collections + pages + blogs Shopify de la boutique.
+   opts.force      : relance même si un fetch est en cours + re-render systématique.
+   opts.toastResult: affiche un toast avec le décompte (retour visuel du bouton). */
+async function loadShopifyResources(opts = {}) {
+  if (resLoading && !opts.force) return;
+  resLoading = true;
+  const forStore = STORE;
+  const before   = JSON.stringify(SHOP_RES);
+  try {
+    const d = await api("GET", "/api/shopify/menu-resources?store=" + encodeURIComponent(STORE));
+    if (STORE !== forStore) return;                // la boutique a changé entre-temps
+    SHOP_RES = { collections: d.collections || [], pages: d.pages || [], blogs: d.blogs || [] };
+    const changed = JSON.stringify(SHOP_RES) !== before;
+    if (opts.toastResult) {
+      toast(`Shopify : ${SHOP_RES.collections.length} collections · ${SHOP_RES.pages.length} pages · ${SHOP_RES.blogs.length} blogs`, "ok");
+    }
+    if ((changed || opts.force) && (CURRENT === "menus" || CURRENT === "collections")) renderFeature(CURRENT);
+  } catch (e) {
+    if (opts.toastResult) toast("Échec du chargement Shopify : " + e.message, "err");
+    if (!SHOP_RES) SHOP_RES = { collections: [], pages: [], blogs: [] };   // échec → repli, sans écraser un cache OK
+  } finally {
+    resLoading = false;
+  }
+}
+
+/* Compte récursivement le nombre total de liens dans une liste d'items de menu. */
+function countMenuItems(items) {
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((n, it) => n + 1 + countMenuItems(it && it.items), 0);
+}
+
+/* Importe la structure RÉELLE des menus depuis Shopify et la charge dans l'éditeur.
+   Écrase l'affichage courant ; l'utilisateur doit ensuite « Enregistrer » pour persister. */
+async function importShopifyMenus() {
+  if (!confirm("Remplacer les menus affichés ici par ceux qui existent réellement sur Shopify ?\n\n" +
+               "Tes modifications non enregistrées seront écrasées. Pense à cliquer sur « Enregistrer » ensuite.")) return;
+  const btn = document.getElementById("importMenusBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Import en cours…"; }
+  try {
+    const d     = await api("GET", "/api/shopify/menus?store=" + encodeURIComponent(STORE));
+    const menus = d.menus || [];
+    CFG.menus   = menus;
+    const links = menus.reduce((n, m) => n + countMenuItems(m.items), 0);
+    toast(`${menus.length} menu(s) et ${links} lien(s) importés depuis Shopify. Clique sur « Enregistrer » pour sauvegarder.`, "ok");
+    renderFeature("menus");   // re-render : l'éditeur affiche désormais les menus Shopify
+  } catch (e) {
+    toast("Échec de l'import des menus : " + e.message, "err");
+    if (btn) { btn.disabled = false; btn.textContent = "⬇︎ Importer mes menus Shopify"; }
+  }
+}
+
+/* Retour en arrière : restaure l'état d'origine des produits (dernier snapshot SEO Boost). */
+async function rollbackFeature() {
+  let backups = [];
+  try {
+    const d = await api("GET", "/api/backups?store=" + encodeURIComponent(STORE));
+    backups = d.backups || [];
+  } catch (e) {
+    toast("Impossible de lire les sauvegardes : " + e.message, "err");
+    return;
+  }
+  const seo = backups.filter(b => b.feature === "seo_boost");
+  if (!seo.length) {
+    toast("Aucune sauvegarde disponible. Lance d'abord SEO Boost au moins une fois.", "err");
+    return;
+  }
+  const last = seo[0];
+  if (!confirm(
+    "Restaurer l'état d'origine des produits (titre, URL, description) ?\n\n" +
+    `Sauvegarde du ${last.created_at} — ${last.count} produit(s).\n` +
+    "Cela annule sur Shopify les modifications faites par SEO Boost.")) return;
+
+  const btn = document.getElementById("rollbackBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Restauration…"; }
+  try {
+    const r = await api("POST", "/api/rollback", { store: STORE, file: last.file });
+    toast(
+      `Retour en arrière effectué : ${r.restored} produit(s) restaurés` +
+      (r.failed ? `, ${r.failed} échec(s)` : "") + ".",
+      r.failed ? "err" : "ok");
+  } catch (e) {
+    toast("Échec du retour en arrière : " + e.message, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "↩︎ Retour en arrière"; }
+  }
+}
+
+/* Retour en arrière Fiche Produit / Reviews : supprime les metafields écrits. */
+async function rollbackFeatureData(feature) {
+  const label = feature === "reviews" ? "les AVIS" : "les FICHES PRODUIT";
+  if (!confirm(
+    `Retour en arrière : retirer ${label} de TOUS tes produits ?\n\n` +
+    "Ça supprime le contenu injecté par cette feature (metafields). " +
+    "Tu pourras le re-pousser depuis ta data archivée (bouton « Pousser ma data »).")) return;
+
+  const btn = document.getElementById("rollbackFeatBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Nettoyage… (patiente)"; }
+  try {
+    const r = await api("POST", "/api/rollback-feature", { store: STORE, feature });
+    toast(`Retour en arrière : ${r.cleared} champ(s) retiré(s) sur ${r.products} produit(s).`,
+      r.cleared ? "ok" : "err");
+  } catch (e) {
+    toast("Échec du retour en arrière : " + e.message, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "↩︎ Retour en arrière"; }
+  }
+}
+
+/* Repousse la data déjà générée (SEO ou Reviews) vers Shopify, sans OpenAI. */
+async function pushSavedData(feature) {
+  const label = feature === "reviews" ? "les AVIS déjà générés"
+    : feature === "fiche_produit" ? "les FICHES PRODUIT déjà générées (nécessite une archive)"
+    : "le SEO déjà généré (titres, URLs, descriptions, meta, caractéristiques)";
+  if (!confirm(
+    `Pousser ${label} vers Shopify, SANS repayer d'OpenAI ?\n\n` +
+    "Ça réutilise ta data sauvegardée (fichiers d'aperçu). Peut prendre quelques minutes — laisse la page ouverte.")) return;
+
+  const btn = document.getElementById("pushSavedBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi en cours… (patiente)"; }
+  try {
+    const r   = await api("POST", "/api/push-saved", { store: STORE, features: [feature] });
+    const res = (r.results || [])[0] || {};
+    toast(
+      `Poussé : ${res.pushed || 0}/${res.total || 0} produit(s)` +
+      (res.not_found ? ` · ${res.not_found} introuvable(s)` : "") +
+      (res.skipped ? ` · ${res.skipped} ignoré(s)` : "") + ".",
+      res.pushed ? "ok" : "err");
+  } catch (e) {
+    toast("Échec du push : " + e.message, "err");
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "⬆︎ Pousser ma data déjà générée"; }
+  }
 }
 
 /* Charge le contenu de tous les fichiers d'entrée dans le cache FILES. */
@@ -629,6 +891,46 @@ function renderSidebar() {
   });
 }
 
+/* Ordre conseillé des features de génération (Fiche/Reviews utilisent le titre
+   que SEO Boost réécrit → SEO Boost d'abord). */
+const GENERATION_ORDER = [
+  { id: "seo_boost",     label: "SEO Boost" },
+  { id: "fiche_produit", label: "Fiche Produit" },
+  { id: "reviews",       label: "Reviews" },
+];
+
+/* Affiche le guide d'ordre + un avertissement si SEO Boost n'a pas encore tourné. */
+function renderOrderGuide(panel, f) {
+  const idx = GENERATION_ORDER.findIndex(o => o.id === f.id);
+  if (idx < 0) return;
+  const steps = GENERATION_ORDER.map((o, i) =>
+    `<span class="${o.id === f.id ? "cur" : ""}">${i + 1}. ${o.label}</span>`
+  ).join(` <span class="arrow">→</span> `);
+
+  const box = document.createElement("div");
+  box.className = "order-guide";
+  box.innerHTML =
+    `<div class="order-steps"><b>🔢 Ordre conseillé :</b> ${steps}</div>` +
+    `<div class="order-why">Fiche Produit et Reviews utilisent le <b>titre du produit</b>. ` +
+    `SEO Boost le réécrit → lance-le <b>en premier</b> pour qu'ils partent du titre optimisé.</div>` +
+    `<div class="order-warn" id="orderWarn" style="display:none"></div>`;
+  panel.appendChild(box);
+
+  // Détection : SEO Boost a-t-il déjà généré ? (archive présente) → avertit Fiche/Reviews
+  if (f.id === "fiche_produit" || f.id === "reviews") {
+    api("GET", "/api/generated?store=" + encodeURIComponent(STORE)).then(d => {
+      const gen  = d.generated || {};
+      const warn = document.getElementById("orderWarn");
+      if (warn && !gen.seo_boost) {
+        warn.style.display = "";
+        warn.innerHTML =
+          "⚠️ <b>SEO Boost n'a pas encore été lancé.</b> Si tu génères maintenant, le contenu " +
+          "partira du titre brut (pas du titre SEO). Conseil : lance <b>SEO Boost d'abord</b>.";
+      }
+    }).catch(() => {});
+  }
+}
+
 /* ── Rendu d'une feature ── */
 function renderFeature(id) {
   CURRENT = id;
@@ -641,12 +943,20 @@ function renderFeature(id) {
 
   if (f.activity) { renderActivity(panel, f); return; }
 
+  // À l'ouverture des Menus/Collections : rafraîchit les collections/pages/blogs Shopify
+  if (f.id === "menus" || f.id === "collections") loadShopifyResources();
+
   // En-tête
   const head = document.createElement("div");
   head.className = "feature-head";
   const actions = [];
   if (f.fields || f.files) actions.push(`<button class="primary" id="saveBtn">💾 Enregistrer</button>`);
-  if (f.section === "Features") actions.push(`<button class="ghost" id="runBtn">▶︎ Lancer cette fonctionnalité</button>`);
+  if (f.id === "menus" || f.id === "collections") actions.push(`<button class="ghost" id="refreshShopBtn">🔄 Recharger depuis Shopify</button>`);
+  if (f.id === "menus") actions.push(`<button class="ghost" id="importMenusBtn">⬇︎ Importer mes menus Shopify</button>`);
+  if (f.id === "seo_boost") actions.push(`<button class="ghost" id="rollbackBtn">↩︎ Retour en arrière</button>`);
+  if (f.id === "fiche_produit" || f.id === "reviews") actions.push(`<button class="ghost" id="rollbackFeatBtn">↩︎ Retour en arrière</button>`);
+  if (f.id === "seo_boost" || f.id === "reviews" || f.id === "fiche_produit") actions.push(`<button class="ghost" id="pushSavedBtn">⬆︎ Pousser ma data déjà générée</button>`);
+  if (f.section === "Features") actions.push(`<button class="ghost" id="runBtn">${f.runLabel || "▶︎ Lancer cette fonctionnalité"}</button>`);
   head.innerHTML = `
     <div>
       <h1>${f.ico} ${f.label}</h1>
@@ -661,6 +971,9 @@ function renderFeature(id) {
     p.innerHTML = `<b>Avant de lancer :</b> ${f.prereq}`;
     panel.appendChild(p);
   }
+
+  // Guide d'ordre des générations (SEO Boost → Fiche Produit → Reviews)
+  renderOrderGuide(panel, f);
 
   // Bannière de verrouillage si des données requises manquent
   const miss = missingFor(f);
@@ -725,9 +1038,22 @@ function renderFeature(id) {
   // Page « Mes données » : tableau de bord du déblocage
   if (f.id === "donnees") panel.appendChild(renderDataStatus());
 
+  // Page « Collections » : liste des collections Shopify réelles (référence + handles)
+  if (f.id === "collections") panel.appendChild(renderShopifyCollectionsRef());
+
   // Actions
   const saveBtn = document.getElementById("saveBtn");
   if (saveBtn) saveBtn.onclick = () => saveFeature(f, readers, fileEditors);
+  const refreshShopBtn = document.getElementById("refreshShopBtn");
+  if (refreshShopBtn) refreshShopBtn.onclick = () => loadShopifyResources({ force: true, toastResult: true });
+  const importMenusBtn = document.getElementById("importMenusBtn");
+  if (importMenusBtn) importMenusBtn.onclick = () => importShopifyMenus();
+  const rollbackBtn = document.getElementById("rollbackBtn");
+  if (rollbackBtn) rollbackBtn.onclick = () => rollbackFeature();
+  const rollbackFeatBtn = document.getElementById("rollbackFeatBtn");
+  if (rollbackFeatBtn) rollbackFeatBtn.onclick = () => rollbackFeatureData(f.id);
+  const pushSavedBtn = document.getElementById("pushSavedBtn");
+  if (pushSavedBtn) pushSavedBtn.onclick = () => pushSavedData(f.id);
   const runBtn = document.getElementById("runBtn");
   if (runBtn) {
     if (miss.length) {
@@ -897,6 +1223,35 @@ function renderActivity(panel, f) {
   activityTimer = setInterval(refresh, 3000);
 }
 
+/* Page Collections : liste des collections Shopify RÉELLES (référence + handles, recherchable). */
+function renderShopifyCollectionsRef() {
+  const card = h("div", { class: "card" });
+  const cols = (SHOP_RES && SHOP_RES.collections) || [];
+  card.append(h("h3", {}, `Tes collections Shopify réelles (${cols.length})`));
+
+  if (!cols.length) {
+    card.append(h("div", { class: "info-note" },
+      "Clique sur « 🔄 Recharger depuis Shopify » (en haut) pour charger la liste de tes vraies collections."));
+    return card;
+  }
+
+  const search = h("input", { type: "text", placeholder: "Rechercher une collection…" });
+  const list   = h("div", { class: "status-list" });
+  const draw = (filter) => {
+    list.innerHTML = "";
+    const f = (filter || "").toLowerCase();
+    cols.filter(c => (c.title || "").toLowerCase().includes(f) || c.handle.toLowerCase().includes(f))
+        .forEach(c => list.append(h("div", { class: "status-row" },
+          h("span", { class: "status-name" }, c.title),
+          h("span", { class: "res-handle" }, c.handle))));
+  };
+  search.addEventListener("input", () => draw(search.value));
+  draw("");
+  const wrap = h("div", { class: "field" }, search);
+  card.append(wrap, list);
+  return card;
+}
+
 /* Tableau de bord : état de déblocage de chaque fonctionnalité. */
 function renderDataStatus() {
   const card = document.createElement("div");
@@ -1012,13 +1367,21 @@ function buildColorPopover(initialHex, onChange) {
 /* ── Affichage conditionnel des champs (showIf) ── */
 function fieldValueOf(readers, path) {
   const r = readers.find(x => x.def.path === path || (x.def.paths && x.def.paths.includes(path)));
-  return r ? r.read() : getPath(CFG, path);
+  if (r) return r.read();
+  // Sous-clé d'un champ "checks" lu en direct (ex: "normalisation.steps.prix")
+  const parent = readers.find(x => x.def.path && path.startsWith(x.def.path + "."));
+  if (parent) {
+    const obj = parent.read() || {};
+    return obj[path.slice(parent.def.path.length + 1)];
+  }
+  return getPath(CFG, path);
 }
 function condOk(cond, readers) {
   if (cond.allOf) return cond.allOf.every(c => condOk(c, readers));
   const v = fieldValueOf(readers, cond.path);
   if (cond.in) return cond.in.includes(v);
   if ("equals" in cond) return v === cond.equals;
+  if ("not" in cond) return v !== cond.not;
   return true;
 }
 function applyVisibility(readers) {
@@ -1035,9 +1398,32 @@ function renderField(def) {
   const help = def.help ? `<div class="help">${def.help}</div>` : "";
 
   if (def.type === "bool") {
-    wrap.innerHTML = `<div class="switch"><input type="checkbox" ${val ? "checked" : ""}/><label style="margin:0">${def.label}</label></div>${help}`;
+    // Valeur absente → utilise def.default (sinon décoché)
+    const checked = (val === undefined || val === null) ? (def.default || false) : val;
+    wrap.innerHTML = `<div class="switch"><input type="checkbox" ${checked ? "checked" : ""}/><label style="margin:0">${def.label}</label></div>${help}`;
     const cb = wrap.querySelector("input");
     return { el: wrap, read: () => cb.checked };
+  }
+
+  if (def.type === "checks") {
+    // Groupe de cases à cocher → objet { clé: bool }. Défaut : coché (valeur !== false).
+    const obj   = getPath(CFG, def.path) || {};
+    const boxes = [];
+    const grid  = h("div", { class: "checks-grid" });
+    def.options.forEach(([key, label]) => {
+      const row = h("label", { class: "check-row" });
+      const cb  = h("input", { type: "checkbox" });
+      cb.checked = obj[key] !== false;   // undefined → coché par défaut
+      row.append(cb, h("span", {}, label));
+      grid.append(row);
+      boxes.push([key, cb]);
+    });
+    wrap.append(labelEl(def.label), grid, helpEl(def.help));
+    return { el: wrap, read: () => {
+      const out = {};
+      boxes.forEach(([key, cb]) => { out[key] = cb.checked; });
+      return out;
+    }};
   }
 
   if (def.type === "select") {
@@ -1097,6 +1483,76 @@ function renderField(def) {
         const [a, b] = r.querySelectorAll("input");
         return { from: a.value, to: b.value };
       }).filter(p => p.from !== "");
+      return out.length ? out : undefined;
+    }};
+  }
+
+  // catrules — règles de catégorie {match:[...], name} (ex: normalisation thématique)
+  if (def.type === "catrules") {
+    const nichesInit = (getPath(CFG, "seo_boost.niches") || []).join("\n");
+    wrap.innerHTML = `<label>${def.label}</label>${help}` +
+      `<div class="catrules-fetch">` +
+      `  <div class="help" style="margin:0 0 4px">1) Tes niches (une par ligne) — pré-remplies depuis SEO Boost :</div>` +
+      `  <textarea class="code catrules-niches" style="min-height:90px">${escapeHtml(nichesInit)}</textarea>` +
+      `  <button class="small catrules-btn" type="button">🔎 Récupérer les catégories</button>` +
+      `  <span class="catrules-status help" style="margin-left:8px"></span>` +
+      `</div>` +
+      `<div class="help" style="margin:8px 0 4px">2) Catégories (mots-clés → catégorie Shopify) :</div>` +
+      `<div class="pairs"></div>` +
+      `<button class="small ghost catrules-add" type="button">+ Ajouter une catégorie</button>`;
+    const box     = wrap.querySelector(".pairs");
+    const nichesTa = wrap.querySelector(".catrules-niches");
+    const status  = wrap.querySelector(".catrules-status");
+    const btn     = wrap.querySelector(".catrules-btn");
+    const addRow = (kw = "", name = "", gid = "", fullName = "") => {
+      const row = document.createElement("div");
+      row.className = "pair-row";
+      if (gid) row.dataset.gid = gid;
+      row.innerHTML = `<input type="text" placeholder="mots-clés : armoire, armoires" value="${escapeAttr(kw)}"/>` +
+        `<span class="arrow">→</span><input type="text" title="${escapeAttr(fullName)}" placeholder="catégorie Shopify (en français)" value="${escapeAttr(name)}"/>` +
+        `<button class="small danger" type="button">✕</button>`;
+      // Si l'utilisateur édite le nom à la main, le GID mémorisé n'est plus valable.
+      row.querySelectorAll("input")[1].addEventListener("input", () => { delete row.dataset.gid; });
+      row.querySelector("button").onclick = () => row.remove();
+      box.appendChild(row);
+    };
+    const arr = Array.isArray(val) ? val : [];
+    arr.forEach(r => addRow((r.match || []).join(", "), r.name || "", r.gid || ""));
+    if (!arr.length) addRow();
+    wrap.querySelector(".catrules-add").onclick = () => addRow();
+
+    btn.onclick = async () => {
+      const niches = nichesTa.value.split("\n").map(s => s.trim()).filter(Boolean);
+      if (!niches.length) { status.textContent = "⚠ Ajoute au moins une niche."; return; }
+      if (!STORE)         { status.textContent = "⚠ Sélectionne une boutique d'abord."; return; }
+      btn.disabled = true; status.textContent = "⏳ Analyse de la taxonomie Shopify…";
+      try {
+        const d = await api("POST", "/api/shopify/resolve-categories", { store: STORE, niches });
+        const rules = d.rules || [];
+        box.innerHTML = "";
+        rules.forEach(r => addRow((r.match || []).join(", "), r.name || "", r.gid || "", r.fullName || ""));
+        if (!rules.length) addRow();
+        const missing = rules.filter(r => !r.found).map(r => r.niche);
+        const mode = d.ai ? "IA" : "lexical (pas de clé OpenAI)";
+        status.innerHTML = missing.length
+          ? `✓ ${rules.length} catégorie(s) — mode ${mode}. ⚠ Non trouvées : <b>${missing.map(escapeHtml).join(", ")}</b> — ajuste à la main.`
+          : `✓ ${rules.length} catégorie(s) proposées (mode ${mode}). Vérifie puis enregistre.`;
+      } catch (e) {
+        status.textContent = "✗ " + e.message;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+
+    return { el: wrap, read: () => {
+      const rows = [...box.querySelectorAll(".pair-row")];
+      const out = rows.map(r => {
+        const [kwEl, nameEl] = r.querySelectorAll("input");
+        const match = kwEl.value.split(",").map(s => s.trim()).filter(Boolean);
+        const rule  = { match, name: nameEl.value.trim() };
+        if (r.dataset.gid) rule.gid = r.dataset.gid;   // GID exact (bouton) → 0 recherche au lancement
+        return rule;
+      }).filter(r => r.name !== "" && r.match.length);
       return out.length ? out : undefined;
     }};
   }

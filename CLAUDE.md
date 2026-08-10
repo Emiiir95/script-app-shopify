@@ -123,9 +123,12 @@ script/
 | Fichier | Contenu |
 |---|---|
 | `stores/{boutique}/reviews_preview.csv` | Aperçu des avis avant injection |
-| `stores/{boutique}/progress.json` | Checkpoint pour reprise automatique |
+| `stores/{boutique}/progress_{feature}.json` | Checkpoint de reprise **par feature** (évite les collisions si plusieurs features tournent) |
 | `stores/{boutique}/seo_boost_cache.json` | Cache de génération SEO (reprise avant injection) |
 | `stores/{boutique}/rapports/*.csv` | Rapports horodatés (rebrand, normalisation, reviews) |
+| `stores/{boutique}/backups/{feature}_{ts}.json` | Snapshot produits avant écrasement — **retour en arrière** (`utils/backup.py`) |
+| `stores/{boutique}/.inject.lock` | Verrou d'injection temporaire (`utils/lock.py`) — présent seulement pendant qu'une feature écrit |
+| `stores/{boutique}/generated/{feature}_{ts}.json` | **Archive permanente** de la data générée (`utils/archive.py`) — jamais effacée, 100% re-poussable |
 
 ---
 
@@ -155,6 +158,14 @@ affiche un message et ne fait rien — elle ne crashe pas.
 `1 SEO Boost` → `2 Fiche Produit` → `3 Fond Studio` → `7 Collections` → `10 Menus` →
 `5 Reviews` → `8 Politiques` → `6 SEO Images`.
 (`9 Transfert` + `11 Rebrand` = duplication d'une boutique existante vers une nouvelle.)
+
+**Dépendance de titre (SEO Boost → Fiche Produit / Reviews) :** Fiche Produit (`product.title`)
+et Reviews (`product["title"]`) génèrent leur contenu à partir du **titre du produit**. SEO Boost
+**réécrit** ce titre (H1). Donc pour que Fiche/Reviews partent du titre optimisé, lancer **SEO Boost
+d'abord**. Ce n'est pas bloquant (injection par ID produit), mais c'est mieux. Le backoffice affiche
+un **guide d'ordre** (`renderOrderGuide`) sur les pages SEO Boost / Fiche Produit / Reviews et
+**avertit** si SEO Boost n'a pas encore d'archive (`GET /api/generated` → `utils/archive.list_generated`).
+La description source (body_html) est, elle, gérée dans tout ordre (metafield `custom.description_fournisseur`).
 
 ---
 
@@ -353,8 +364,11 @@ l'ordre. Sûr à relancer (idempotent une fois les termes remplacés).
 ## Feature Fond Studio (3) — régénère la 1ère image sur fond uni
 
 Pour chaque produit, envoie la **1ère photo** à **OpenAI gpt-image-1** (`images.edit`) avec un
-prompt strict : remplacer **uniquement le fond** par une **couleur unie**, en gardant le produit
-identique. La nouvelle image est ajoutée en **position 1** (l'ancienne 1ère est conservée, décalée).
+prompt strict : remplacer le fond en gardant le produit **100 % identique et recentré**. Deux
+types de fond (`background_type`) : **couleur unie** (`background_color`) ou **mise en scène**
+(`scene_template` : minimaliste, luxe, mode, nature, beaute, maison, tech, cuisine, enfant, sport
+— voir `SCENE_TEMPLATES` dans prompts.py). La nouvelle image est ajoutée en **position 1**
+(l'ancienne 1ère est conservée, décalée).
 
 **Flow (`generator.py` → `injector.py`) :** fetch produits avec images →
 `download_image(url)` (requests) → `regenerate_on_background(...)` (gpt-image-1, renvoie du PNG) →
@@ -364,13 +378,21 @@ identique. La nouvelle image est ajoutée en **position 1** (l'ancienne 1ère es
 **Structure `config.json` :**
 ```json
 "fond_studio": {
-  "background_color": "#FFFFFF",   // hex (palette dans le backoffice) ou nom : "beige"
-  "size":           "1024x1024",   // optionnel : 1024x1024 | 1024x1536 | 1536x1024 | auto
-  "output_format":  "png",         // optionnel : png | jpeg | webp
-  "product_status": "all"          // optionnel : all | active | draft (sinon demandé au lancement)
+  "background_type":  "color",     // color | scene
+  "background_color": "#FFFFFF",   // si color : hex (palette) ou nom : "beige"
+  "scene_template":   "luxe",      // si scene : minimaliste|luxe|mode|nature|beaute|maison|tech|cuisine|enfant|sport
+  "size":             "1024x1024", // optionnel : 1024x1024 | 1024x1536 | 1536x1024 | auto
+  "output_format":    "png",       // optionnel : png | jpeg | webp
+  "product_status":   "all",       // optionnel : all | active | draft (sinon demandé au lancement)
+  "reference_images": 1            // optionnel : 1..4 images du produit envoyées à l'IA (plus fidèle mais + cher)
 }
 ```
 La qualité gpt-image-1 est fixée à **medium** (normale) côté appli — non configurable.
+
+**Couleur de fond** — le prompt (`build_background_prompt`) demande EXACTEMENT la couleur choisie
+(hex + RGB + interdictions de dérive/gradient), mais gpt-image-1 ne reproduit **jamais** un hex au
+pixel près (limite des modèles d'image) : le fond sera proche et cohérent, pas rigoureusement exact.
+Choix assumé : **100 % IA** (pas de post-traitement/découpage, pour garder des images naturelles).
 
 **Notes :**
 - **Payant** : chaque image est facturée par OpenAI (gpt-image-1, qualité medium). Le runner
@@ -380,6 +402,128 @@ La qualité gpt-image-1 est fixée à **medium** (normale) côté appli — non 
 - Rien n'est supprimé : l'ancienne 1ère image reste (en 2ème position).
 
 ---
+
+## Note — préservation de la description fournisseur (SEO Boost 1 & Fiche Produit 2)
+
+SEO Boost **écrase** `title`, `handle` et `body_html` du produit par le contenu généré.
+Or la génération lit sa source dans `body_html`. Sans protection, un 2e run régénérerait
+**par-dessus** le contenu déjà généré (compounding).
+
+**Solution :** au 1er passage, `resolve_supplier_description()` (dans `seo_boost/runner.py`)
+sauvegarde le `body_html` d'origine dans le metafield **`custom.description_fournisseur`**
+(`multi_line_text_field`). Aux runs suivants, la génération lit **ce metafield** comme source,
+jamais le `body_html` écrasé. → **SEO Boost et Fiche Produit sont relançables à volonté**, ils
+régénèrent toujours depuis la vraie description fournisseur. Fiche Produit utilise le même helper.
+
+⚠️ **Attention au tout premier run** : le backup capture le `body_html` **tel qu'il est à ce
+moment**. Si SEO Boost a déjà tourné une fois *avant* l'introduction de cette logique (donc
+`body_html` déjà généré, aucun backup), le backup figera ce contenu généré comme « source ».
+Pour une base propre, réimporter les descriptions fournisseur dans `body_html` avant le 1er run.
+Le metafield n'a pas besoin de définition (créé via REST) mais peut être ajouté dans Setup.
+
+---
+
+## Note — pousser la data déjà générée (sans OpenAI)
+
+`features/push_saved/pusher.py` repousse vers Shopify la data **déjà générée** (donc payée),
+**sans aucun appel OpenAI**. Sert quand des produits ont été sautés (features en parallèle).
+Backoffice : bouton **« ⬆︎ Pousser ma data déjà générée »** (pages SEO Boost, Fiche Produit,
+Reviews) → `POST /api/push-saved`. Réutilise les injecteurs existants.
+
+**Deux sources, par ordre de priorité :**
+1. **Archive permanente** `generated/{feature}_{ts}.json` (`utils/archive.py`) — écrite après
+   chaque génération, **jamais effacée**, contient la data COMPLÈTE (caractéristiques SEO,
+   descriptions Fiche Produit entières, avis complets). Push par **ID produit** (fiable).
+2. **Fallback CSV d'aperçu** `rapports/*_preview.csv` (si pas d'archive) — data partielle
+   (pas de caractéristiques, descriptions Fiche tronquées). Matching par handle (alias
+   original↔nouveau car SEO change les handles).
+
+Reviews ne remplit que les slots `avis_client` **vides** (recalculés au push → pas de doublon).
+⚠️ Les données générées **avant** l'ajout de l'archive n'ont pas d'archive → seul le fallback CSV
+(partiel) est dispo ; pour du complet, relancer la feature (créera l'archive).
+
+## Note — retour en arrière (rollback)
+
+**SEO Boost** écrase title/handle/body_html → snapshot avant écrasement dans
+`stores/{boutique}/backups/seo_boost_{ts}.json` (`utils/backup.save_snapshot()`, indexé par
+**ID produit**). Bouton **« ↩︎ Retour en arrière »** (page SEO Boost) → `GET /api/backups` +
+`POST /api/rollback` (restaure le dernier snapshot title/handle/body_html + metafields).
+
+**Fiche Produit & Reviews** n'écrasent rien (elles ne font qu'AJOUTER des metafields) → pas de
+snapshot ; le retour en arrière **supprime les metafields écrits** (`features/reset/clearer.py`,
+`FEATURE_METAFIELDS`) : fiche_produit = `custom.benefices/feature_1/feature_2/phrase` ;
+reviews = `custom.avis_client_1..8/note_globale`. Bouton **« ↩︎ Retour en arrière »** (pages Fiche
+Produit & Reviews) → `POST /api/rollback-feature`. Les metaobjects sous-jacents restent (invisibles,
+ré-écrasés au prochain run). Re-poussable ensuite via « Pousser ma data ».
+
+## Note — titres H1 naturels (SEO Boost 1)
+
+Config `seo_boost.natural_titles` (bool, défaut `false`). `true` → au lieu du template rigide
+`{niche} {attributs empilés}`, l'IA rédige un **H1 + meta title naturels** (`generate_natural_title`
+/ `build_natural_title_prompt`, JSON `{h1, meta_title}`) : mot-clé/niche en tête **quand c'est
+fluide**, sinon le **vrai nom du produit** (« Support à Colliers » plutôt que « Porte Bijoux Support
+Collier »), pas de keyword-stuffing, ~50-65 car., respecte les `title_attributes` cochés, marque selon
+`title_style`/`branding_position`. **Cible les mots-clés SEMrush** (`seo_keywords` = bloc
+`format_keywords_for_prompt` issu de `keywords.csv`, avec volumes) → place les termes les plus
+recherchés en tête. Option `seo_boost.title_use_image` (bool, nécessite `natural_titles`) : envoie
+la **1ère photo** à l'IA (`image_url`, `detail:"low"` ≈ 85 tokens) pour un titre plus juste (couleur/
+forme) ; le runner bascule alors sur `fetch_all_products_with_images`. Compatible avec l'unicité (retry `avoid` + `make_unique_title`)
+et le mode thématique (le `niche_kw` passé est le type détecté). Repli sur le titre fournisseur si
+l'IA échoue. `false` → ancien template (`build_h1` + `build_meta_title`). Conforme best practices
+2026 (buyer-first, naturel, H1 ≈ meta title mais non identiques). UI : « Titres naturels ».
+
+## Note — boutique mono-niche vs thématique (SEO Boost 1)
+
+`build_h1` met la **niche fixe** (`seo_boost.niche_keyword`) au début de CHAQUE titre — conçu pour
+une boutique **mono-niche**. Sur une boutique **thématique** (boîtes à montres, porte-bijoux,
+armoires…), c'est faux : une boîte à montre devenait « Boîte à Bijoux ». Config `seo_boost.niche_mode` : `"fixed"` (défaut, mono-niche) ou `"thematic"`. En thématique, le
+runner appelle `generate_product_type(product_title, supplier_description, niche_keyword, ..., niches=)`
+par produit → le **vrai type** remplace `niche_kw` partout (H1, meta title/desc, description).
+Si `seo_boost.niches` (liste fournie par l'utilisateur) est présent, l'IA **classe** le produit dans
+UNE niche de la liste et `_snap_to_niche` **verrouille l'orthographe exacte** (tolère pluriel/casse/
+accents/ponctuation ; si aucune ne correspond → garde la proposition IA). Sinon, type libre (2-5 mots).
+Repli sur la niche fixe si l'IA échoue. UI : champs « Type de boutique » + « Les niches de ta boutique »
+(liste, `showIf` thematic) sur la page SEO Boost.
+
+## Note — titres/handles uniques (SEO Boost 1)
+
+GPT génère le titre **produit par produit sans mémoire des autres** → il répète souvent le même
+titre générique pour des produits similaires (ex : 10× « Boîte à Bijoux Design Bois Élégant »).
+Le handle = `slugify(H1)` → handles identiques → **Shopify ajoute `-1`, `-2`…** (mauvais SEO).
+
+**Unicité en 3 couches (respecte toujours les attributs cochés) :**
+1. **Prompt** : instruction de varier le vocabulaire (synonymes style/commercial) pour que deux
+   produits similaires n'aient pas le même libellé.
+2. **Retry IA** : si le H1 est déjà pris, on redemande à GPT une variante distincte via le param
+   `avoid=` de `build_boost_differentiator_prompt` / `generate_differentiator` (liste des titres
+   pris) — jusqu'à 2 fois, dans les seuls attributs autorisés.
+3. **Filet déterministe** : `make_unique_title` (ci-dessous) si l'IA n'a pas suffi.
+
+**Unicité PAR BOUTIQUE (runs partiels / ajouts ultérieurs)** : au début de la génération, on amorce
+`used_titles`/`used_handles` avec les titres/handles des produits **déjà en ligne** (via
+`fetch_all_products`), en **excluant ceux du run en cours** (pour ne pas les bloquer avec leur propre
+ancien titre). Ainsi un nouveau produit ajouté puis passé dans un run ultérieur évite les titres
+existants → toujours unique à l'échelle de la boutique, jamais de `-N`. Même amorçage dans le push
+archive (`_push_seo_from_archive`). Garantie testée jusqu'au pire cas (200 produits identiques → 200
+titres/handles uniques).
+`make_unique_title(h1, original_title, used_titles, title_attributes)` (seo_boost/runner.py)
+dédoublonne en **respectant les cases cochées** (`title_attributes`) : si un H1 est déjà pris, il
+greffe un détail distinctif du **titre fournisseur** pris UNIQUEMENT dans une catégorie **activée**
+(vocabulaire par catégorie : `_COLOR_WORDS`, `_MATERIAL_WORDS`, `_STYLE_WORDS`, `_COMMERCIAL_WORDS`,
+dimensions via `_DIM_RE`, feature = mots distinctifs restants). **Dernier recours** si deux produits
+sont identiques sur toutes les catégories cochées : on départage avec une catégorie **décochée**
+(ex : couleur pour « Cuir Noir » vs « Cuir Rose »), puis suffixe numérique si vraiment rien.
+Appliqué à la génération ET au **push depuis l'archive** (`_push_seo_from_archive`, lit
+`title_attributes` via `_read_title_attributes`) → réparer les URL en -N sans régénérer.
+Sur atelier (dimensions+couleur décochées) : 75 titres uniques/121 → **121/121**.
+
+## Note — cases à cocher du titre produit (SEO Boost 1)
+
+`seo_boost.title_attributes` = dict `{clé: bool}` contrôlant les attributs autorisés dans le
+titre (voir `TITLE_ATTRIBUTES` dans `seo_boost/prompts.py` : commercial_keyword, dimensions,
+feature, material, style, color). Absent/clé manquante → `True`. Injecté dans le prompt du
+differentiator (inclus + bloc « NE PAS INCLURE »). Tout décoché → differentiator vide (titre =
+niche seule, sans appel OpenAI). UI backoffice = type de champ `checks`.
 
 ## Note — modes de titre H1 (SEO Boost 1)
 
@@ -400,14 +544,77 @@ du bloc `seo_boost` (config.json). **3 modes** (exemple niche = "Griffoir Chat",
 
 ---
 
-## Note — couleurs de la Normalisation (3)
+## Note — Normalisation (4) : prix & couleurs
 
-La feature Normalisation gère les swatches de couleur via le metaobject standard
-**`shopify--color-pattern`** (⚠️ **pas** `shopify--ct-color-pattern`, réservé à l'app payante
-Combined Listings). Si la définition n'existe pas, elle est créée automatiquement. Chaque couleur
-créée est rattachée à la **taxonomie Shopify** (`color_taxonomy_reference` + `pattern_taxonomy_reference`
-= "Solid") — mappings dans `_COULEUR_TAXONOMY_GID` / `_COULEUR_HEX` (injector.py). Une couleur
-inconnue tombe sur un fallback gris. **La normalisation ne modifie jamais le status du produit.**
+**Parties activables** (`normalisation.steps`, dict `{clé: bool}`) — la normalisation est découpée
+en 5 parties **cochables indépendamment** (voir `resolve_steps` dans `injector.py`). Clé absente
+ou `null` → **activée** (rétrocompatible : une config sans bloc `steps` fait tout comme avant) :
+- `prix` : prix + prix barré (`compare_at_price`)
+- `stock_taxes` : `taxable`, `inventory_policy`, `fulfillment_service`, `requires_shipping`
+- `fournisseur` : `vendor` = nom boutique (le PUT produit est **sauté** si décoché)
+- `categorie` : catégorie taxonomique Shopify
+- `couleurs` : swatches `shopify--color-pattern` (le bloc de chargement/création couleurs est
+  entièrement **sauté** dans le runner si décoché)
+
+Une partie décochée est **laissée intacte** (aucun champ écrit). Si `prix` ET `stock_taxes` sont
+décochés, le PUT variante est entièrement sauté. `normalize_product(..., steps=)` reçoit le dict
+résolu ; le runner reflète l'état activé/désactivé dans le résumé avant confirmation. UI backoffice
+= type de champ `checks` ; `price_mode` et les champs catégorie sont masqués (`showIf`) quand leur
+partie est décochée.
+
+**Catégorie par produit (boutique thématique)** — `normalisation.category_rules` (liste ordonnée
+de `{match: [mots-clés], name: "Catégorie FR", search?: "terme forcé"}`). Chaque produit est classé
+par `match_category_rule` (injector.py) : la **1ère règle** dont un mot-clé apparaît dans
+`title + product_type + tags` (normalisés sans accent/casse, **mot entier**) gagne → **l'ordre = la
+priorité** (mettre le plus spécifique en premier, ex : `montre` avant `boite` sinon « Boîte à Montre »
+tomberait dans « Boîtes à bijoux »). `fetch_all_products_with_variants` récupère donc aussi
+`product_type,tags`. Les GID sont résolus **une fois par terme** au lancement (`resolve_rule_gids`
+→ `find_taxonomy_category_gid`, cache) ; le runner affiche chaque règle résolue/introuvable.
+**Langue** : on cherche avec le **nom français** (`name`) — la taxonomie Shopify renvoie les noms
+dans la langue de la boutique, donc pas besoin d'anglais ; `search` ne sert que de terme forcé si
+la recherche FR échoue. Un produit sans règle correspondante prend `product_category_name`
+(catégorie **par défaut / repli**). Boutique **mono-niche** : laisser `category_rules` vide et ne
+remplir que `product_category_name`. UI backoffice = type de champ `catrules` (lignes mots-clés →
+catégorie) + catégorie par défaut. Masqué si la partie `categorie` est décochée.
+
+**Matching** : `match_category_rule` utilise la sémantique « **tous les mots présents** » (mots
+entiers, sans accent/casse) — un mot-clé multi-mots comme `"boite montre"` exige `boite` ET `montre`
+dans le titre/type/tags (ordre libre). C'est ce qui distingue « Boîte à Montre » de « Boîte à
+Bijoux ». Un mot-clé mono-mot (`"armoire"`) marche toujours.
+
+**Bouton « Récupérer les catégories »** (page Normalisation, widget `catrules`) : générique, marche
+pour toute boutique (mono-niche ou thématique). L'utilisateur saisit ses niches (pré-remplies depuis
+`seo_boost.niches`) → `POST /api/shopify/resolve-categories` → `resolve_categories` (server.py) →
+`utils/taxonomy.suggest_categories`. Fonctionnement (`utils/taxonomy.py`) :
+1. **Télécharge la taxonomie publique Shopify en français** (`TAXONOMY_URL`, `dist/fr/categories.txt`)
+   et la met en cache (`cache/shopify_taxonomy_fr.txt`, TTL 30 j). Les **GID de catégorie sont
+   universels** (identiques sur toutes les boutiques) → pas besoin de l'API Admin ni de deviner.
+2. **Collecte des candidats** (`gather_candidates`) : pour chaque mot de la niche, toutes les
+   catégories dont la feuille contient ce mot (couvre la dimension « porte » ET « bijoux ») + top
+   lexical global.
+3. **Choix de la plus proche** : si une clé OpenAI est dans `.env`, GPT tranche sémantiquement
+   (`choose_category_ai` — gère les synonymes : « porte/arbre » → « Support pour bijoux », « porte
+   montre » → « Présentoirs pour montres ») ; sinon repli lexical (`_score`). L'IA peut renvoyer le
+   GID complet ou l'id court (`hb-2-3-2`) — les deux sont acceptés.
+
+Le bouton remplit les lignes `mots-clés → catégorie (FR)` **et mémorise le GID exact** par ligne
+(`row.dataset.gid`) → enregistré dans `category_rules[].gid` → **aucune recherche au lancement**
+(`resolve_rule_gids` utilise le `gid` direct). Éditer le nom à la main efface le GID mémorisé (repli
+recherche par nom). Niches sans catégorie → `found=False`, signalées pour correction. Le matching FR
+(`dist/fr`) évite le problème de langue de l'API Admin (anglais). Tests : `tests/test_taxonomy.py`.
+
+**Prix** (`normalisation.price_mode`) — le prix barré (`compare_at_price`) est **toujours vidé** ;
+le prix final dépend du mode :
+- `keep_price` : garde le prix actuel (ex : 20 / barré 50 → **20**)
+- `use_compare` : met le prix barré comme prix (ex : 20 / barré 50 → **50** ; sécurité : jamais 0 si pas de barré)
+- `max` (défaut) : garde le plus élevé (ex : 20 / barré 50 → **50**)
+Config : `product_category_name` (fr), `product_category_search` (en), `price_mode`.
+
+**Couleurs** : swatches via le metaobject standard **`shopify--color-pattern`** (⚠️ **pas**
+`shopify--ct-color-pattern`, réservé à l'app payante Combined Listings). Créé automatiquement si
+absent ; chaque couleur rattachée à la **taxonomie Shopify** (`color_taxonomy_reference` +
+`pattern_taxonomy_reference` = "Solid") — mappings dans `_COULEUR_TAXONOMY_GID` / `_COULEUR_HEX`.
+Couleur inconnue → fallback gris. **La normalisation ne modifie jamais le status du produit.**
 
 ---
 
@@ -438,15 +645,39 @@ print(tracker.cost_usd)         # float
 
 ### `utils/checkpoint.py`
 
-Le progress.json est sauvegardé dans le dossier de la boutique, pas à la racine.
+Checkpoint sauvegardé dans le dossier de la boutique. **Un fichier par feature**
+(`progress_{feature}.json`) via le paramètre `feature=` — sinon plusieurs features
+lancées en parallèle partageraient le même fichier et se sauteraient des produits
+(une feature voit les `completed_handles` d'une autre → `continue`).
 
 ```python
 from utils.checkpoint import save_progress, load_progress, clear_progress
 
-last_index, completed_handles = load_progress(store_path)
-save_progress(store_path, idx, completed_handles)
-clear_progress(store_path)
+last_index, completed_handles = load_progress(store_path, "seo_boost")
+save_progress(store_path, idx, completed_handles, "seo_boost")
+clear_progress(store_path, "seo_boost")
 ```
+
+**Lancements en parallèle** : deux protections permettent de tout lancer d'un coup sans casse :
+1. **Checkpoint par feature** (`progress_{feature}.json`) — plus de collision de reprise.
+2. **Verrou boutique** (`utils/lock.py`, `StoreLock`) — la **phase d'injection** de chaque
+   feature est entourée d'un verrou fichier (`stores/{boutique}/.inject.lock`). Une seule
+   feature écrit à la fois ; les autres **attendent leur tour** puis injectent. La génération
+   OpenAI reste parallèle (elle n'écrit pas sur Shopify). Verrou périmé (process mort ou
+   > 30 min) volé automatiquement.
+
+```python
+from utils.lock import StoreLock
+store_lock = StoreLock(store_path, "seo_boost")
+store_lock.acquire(wait_message="  ⏳ Une autre feature ({feature}) écrit — attente...")
+try:
+    ...boucle d'injection...
+finally:
+    store_lock.release()
+```
+
+Reste conseillé de les lancer **dans l'ordre** (Menu des features) pour la lisibilité, mais ce
+n'est plus obligatoire pour la correction.
 
 ---
 

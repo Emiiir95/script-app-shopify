@@ -32,6 +32,9 @@ from features.seo_boost.prompts import (
     build_boost_meta_prompt,
     build_boost_differentiator_prompt,
     build_boost_description_prompt,
+    build_product_type_prompt,
+    build_natural_title_prompt,
+    resolve_title_attributes,
 )
 from features.fiche_produit.prompts import build_specs_prompt
 from utils.logger import log
@@ -515,7 +518,7 @@ def generate_ai_branding_name(product_keyword, niche_keyword, supplier_descripti
     raise Exception("Impossible de générer le branding name IA après plusieurs tentatives.")
 
 
-def generate_differentiator(product_keyword, niche_keyword, supplier_description, seo_keywords, openai_client, cost_tracker, max_retries=3):
+def generate_differentiator(product_keyword, niche_keyword, supplier_description, seo_keywords, openai_client, cost_tracker, max_retries=3, title_attributes=None, avoid=None):
     """
     Génère les attributs différenciants d'un produit via OpenAI (texte brut, 1 ligne).
 
@@ -534,7 +537,13 @@ def generate_differentiator(product_keyword, niche_keyword, supplier_description
     Raises:
         Exception : si toutes les tentatives échouent
     """
-    prompt = build_boost_differentiator_prompt(product_keyword, niche_keyword, supplier_description, seo_keywords)
+    # Si l'utilisateur a tout décoché, aucun attribut → titre = niche seule
+    if not any(resolve_title_attributes(title_attributes).values()):
+        return ""
+
+    prompt = build_boost_differentiator_prompt(
+        product_keyword, niche_keyword, supplier_description, seo_keywords, title_attributes, avoid
+    )
 
     for attempt in range(max_retries):
         try:
@@ -568,6 +577,114 @@ def generate_differentiator(product_keyword, niche_keyword, supplier_description
                 raise Exception(f"Échec génération differentiator après {max_retries} tentatives : {err}")
 
     raise Exception("Impossible de générer le differentiator après plusieurs tentatives.")
+
+
+def _norm_niche(s):
+    """Normalise pour comparer des niches : sans accent, minuscules, sans ponctuation,
+    et pluriel simplifié (montres → montre) pour tolérer les variations de l'IA."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode("ascii").lower()
+    t = re.sub(r"[^a-z0-9\s]", " ", t)
+    words = [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in t.split()]
+    return " ".join(words).strip()
+
+
+def _snap_to_niche(value, niches):
+    """Force l'orthographe EXACTE de la niche de la liste (tolère pluriel/casse/accents).
+    Si aucune ne correspond → garde ce que l'IA a proposé (pas obligé)."""
+    nv = _norm_niche(value)
+    for n in niches:
+        if _norm_niche(n) == nv:
+            return n
+    for n in niches:
+        nn = _norm_niche(n)
+        if nn and (nn in nv or nv in nn):
+            return n
+    return value
+
+
+def generate_natural_title(product_title, supplier_description, niche, title_attributes,
+                           branding_name, branding_position, title_style,
+                           openai_client, cost_tracker, max_retries=3, avoid=None, seo_keywords="",
+                           image_url=None):
+    """
+    Génère un H1 + meta title NATURELS via OpenAI (best practices : buyer-first, mot-clé
+    en tête si fluide sinon nom spécifique, pas de stuffing, ~60 car, cible les mots-clés
+    à fort volume). Si `image_url` est fourni, l'IA voit la 1ère photo (couleur, forme…)
+    pour un titre plus juste. Retourne (h1, meta_title). Repli sur le titre fournisseur si échec.
+    """
+    prompt = build_natural_title_prompt(
+        product_title, supplier_description, niche, title_attributes,
+        branding_name, branding_position, title_style, avoid, seo_keywords,
+    )
+    # Message texte seul, ou multimodal (texte + image). "high" détail = l'IA distingue
+    # bien la matière/couleur (essentiel car les descriptions fournisseur sont souvent fausses).
+    if image_url:
+        content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": image_url, "detail": "high"}},
+        ]
+    else:
+        content = prompt
+    for attempt in range(max_retries):
+        try:
+            resp = openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[{"role": "user", "content": content}],
+                temperature=OPENAI_TEMPERATURE_LOW,
+                response_format={"type": "json_object"},
+            )
+            cost_tracker.add(resp.usage)
+            data = json.loads(resp.choices[0].message.content)
+            h1 = (data.get("h1") or "").strip()
+            mt = (data.get("meta_title") or "").strip()
+            if h1:
+                log(f"Titre naturel — {product_title!r} → h1: {h1!r}")
+                return h1, (mt or h1)
+        except Exception as e:
+            log(f"Erreur titre naturel — {product_title!r} | {e} (tentative {attempt+1}/{max_retries})", "warning")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+    # Repli sûr : le titre fournisseur (déjà descriptif)
+    fallback = (product_title or niche or "").strip()
+    return fallback, fallback
+
+
+# (exporté et utilisé par le runner en mode boutique thématique)
+def generate_product_type(product_title, supplier_description, niche_keyword, openai_client, cost_tracker, max_retries=3, niches=None):
+    """
+    Détermine la NICHE/TYPE d'un produit via OpenAI, pour une boutique thématique.
+
+    Si `niches` (liste) est fourni, l'IA CHOISIT parmi cette liste et on verrouille
+    l'orthographe exacte (`_snap_to_niche`). Sinon, elle propose un type libre (2-4 mots).
+    Sert de base au H1 à la place de la niche fixe. Repli sur `niche_keyword` si échec.
+
+    Returns:
+        str : niche/type du produit — jamais vide (fallback niche).
+    """
+    prompt = build_product_type_prompt(product_title, supplier_description, niche_keyword, niches)
+    for attempt in range(max_retries):
+        try:
+            response = openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=OPENAI_TEMPERATURE_LOW,
+            )
+            cost_tracker.add(response.usage)
+            raw  = response.choices[0].message.content.strip()
+            ptype = re.sub(r'^["""\'«»\s]+|["""\'«»\s]+$', '', raw).strip()
+            ptype = " ".join(ptype.split()[:5]).strip()
+            if ptype:
+                if niches:
+                    ptype = _snap_to_niche(ptype, niches)   # orthographe exacte de la liste
+                log(f"Niche produit — {product_title!r} → {ptype!r}")
+                return ptype
+        except Exception as e:
+            log(f"Erreur détection niche produit — {product_title!r} | {e} (tentative {attempt+1}/{max_retries})", "warning")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)
+    # Repli : niche fixe (ou titre produit si pas de niche)
+    return (niche_keyword or product_title or "").strip()
 
 
 def generate_description(product_keyword, niche_keyword, supplier_description, branding_name, word_count, openai_client, cost_tracker, seo_keywords="", collections=None, max_retries=3):

@@ -16,17 +16,20 @@ from datetime import datetime
 
 # ── progress.json ─────────────────────────────────────────────────────────────
 
-def _progress_file(store_path):
-    return os.path.join(store_path, "progress.json")
+def _progress_file(store_path, feature=None):
+    # Un fichier par feature (progress_seo_boost.json…) pour éviter que des features
+    # lancées en parallèle ne se marchent dessus. `feature=None` → progress.json (legacy).
+    fname = f"progress_{feature}.json" if feature else "progress.json"
+    return os.path.join(store_path, fname)
 
 
-def save_progress(store_path, last_index, completed_handles):
-    with open(_progress_file(store_path), "w", encoding="utf-8") as f:
+def save_progress(store_path, last_index, completed_handles, feature=None):
+    with open(_progress_file(store_path, feature), "w", encoding="utf-8") as f:
         json.dump({"last_index": last_index, "completed": completed_handles}, f)
 
 
-def load_progress(store_path):
-    path = _progress_file(store_path)
+def load_progress(store_path, feature=None):
+    path = _progress_file(store_path, feature)
     if not os.path.exists(path):
         return -1, []
     try:
@@ -37,8 +40,8 @@ def load_progress(store_path):
         return -1, []
 
 
-def clear_progress(store_path):
-    path = _progress_file(store_path)
+def clear_progress(store_path, feature=None):
+    path = _progress_file(store_path, feature)
     if os.path.exists(path):
         os.remove(path)
 

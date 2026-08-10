@@ -41,12 +41,21 @@ from openai import OpenAI
 from tqdm import tqdm
 
 from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
-from shopify.products import fetch_all_products_full
+from shopify.products import (
+    fetch_all_products,
+    fetch_all_products_full,
+    fetch_all_products_with_images,
+    fetch_product_metafields,
+    fetch_all_product_metafields,
+    set_product_metafield,
+)
 from features.seo_boost.generator import (
     strip_html,
     generate_ai_branding_name,
     pick_theme_branding,
     generate_differentiator,
+    generate_product_type,
+    generate_natural_title,
     generate_description,
     generate_meta_description,
     generate_handle,
@@ -54,10 +63,16 @@ from features.seo_boost.generator import (
     build_h1,
     build_meta_title,
 )
-from features.seo_boost.injector import generate_csv_preview, generate_injection_report, inject_product_seo
+from features.seo_boost.injector import (
+    generate_csv_preview, generate_injection_report, inject_product_seo, SEO_BOOST_METAFIELDS,
+)
+from features.seo_boost.prompts import resolve_title_attributes
 from utils.logger import log, LOG_FILE
 from utils.cost_tracker import CostTracker, estimate_cost
 from utils.checkpoint import save_progress, load_progress, clear_progress
+from utils.backup import save_snapshot
+from utils.lock import StoreLock
+from utils.archive import save_generated
 from utils.product_filter import ask_product_status
 
 from datetime import datetime
@@ -124,9 +139,18 @@ def _print_seo_boost_estimate(n_products, boost_cfg):
 # Mots qui classifient une collection comme VARIATION (taille/couleur) vs TYPE (style/forme)
 # Port exact de VARIATION_KEYWORDS (transform-boost.js)
 _VARIATION_KEYWORDS = {
-    'petit', 'grand', 'xxl', 'mini', 'compact',
+    'petit', 'petite', 'grand', 'grande', 'xxl', 'mini', 'compact',
     'beige', 'noir', 'blanc', 'gris', 'rose', 'bleu', 'rouge', 'vert',
     'marron', 'brun', 'creme', 'taupe', 'anthracite', 'ivoire',
+}
+
+# Mots vides / génériques ignorés lors du matching sur le NOM d'une collection
+# (quand aucun tag n'est défini). Complétés dynamiquement par les mots de la
+# niche et de la collection principale (voir select_collections_for_product).
+_MAILLAGE_STOPWORDS = {
+    'a', 'au', 'aux', 'avec', 'ce', 'de', 'des', 'du', 'en', 'et', 'la', 'le',
+    'les', 'nos', 'notre', 'par', 'pour', 'sur', 'un', 'une',
+    'tout', 'toute', 'toutes', 'tous',
 }
 
 
@@ -142,6 +166,17 @@ def _normalize_col_text(text):
     return lower.strip()
 
 
+def _parse_tag_set(product_tags):
+    """
+    Normalise les tags d'un produit Shopify en set de tags normalisés.
+    Accepte une chaîne CSV ("A, B, C") — format REST — ou une liste.
+    """
+    if not product_tags:
+        return set()
+    raw = product_tags.split(",") if isinstance(product_tags, str) else list(product_tags)
+    return {_normalize_col_text(t) for t in raw if t and t.strip()}
+
+
 def _is_variation_collection(col_name):
     """
     Détermine si une collection est de type VARIATION (taille/couleur).
@@ -152,25 +187,126 @@ def _is_variation_collection(col_name):
     return any(w in _VARIATION_KEYWORDS for w in words)
 
 
-def select_collections_for_product(product_title, supplier_description, boost_cfg):
+_DIM_RE = re.compile(r'\d+(?:[.,]\d+)?\s*cm', re.IGNORECASE)
+
+# Vocabulaire par catégorie d'attribut (mots NORMALISÉS : sans accent, minuscules).
+# Sert à dédoublonner en ne piochant QUE dans les catégories cochées par l'utilisateur.
+_COLOR_WORDS = {
+    "beige", "noir", "blanc", "gris", "rose", "bleu", "rouge", "vert", "marron", "brun",
+    "creme", "taupe", "anthracite", "ivoire", "dore", "argente", "naturel", "fonce",
+    "clair", "cuivre", "champagne", "or",
+}
+_MATERIAL_WORDS = {
+    "bois", "cuir", "velours", "metal", "mdf", "bambou", "suede", "marbre", "verre", "tissu",
+    "plastique", "resine", "liege", "pu", "acrylique", "feutre", "similicuir", "rotin", "osier",
+    "ceramique", "inox", "aluminium",
+}
+_STYLE_WORDS = {
+    "design", "moderne", "elegant", "vintage", "luxe", "minimaliste", "classique", "chic",
+    "retro", "scandinave", "boheme",
+}
+_COMMERCIAL_WORDS = {
+    "xxl", "xl", "grand", "grande", "petit", "petite", "mini", "mural", "murale", "plafond",
+    "compact", "geant", "geante", "pliable", "rotatif", "portable", "nomade",
+}
+_GENERIC_ATTR_WORDS = _COLOR_WORDS | _MATERIAL_WORDS | _STYLE_WORDS | _COMMERCIAL_WORDS
+
+
+def make_unique_title(h1, original_title, used_titles, title_attributes=None):
+    """
+    Garantit un H1 UNIQUE en respectant les attributs CHOISIS par l'utilisateur.
+
+    GPT génère souvent le même titre générique pour des produits similaires → titres
+    (et handles) dupliqués → Shopify ajoute -1/-2. Ici, si `h1` est déjà pris, on greffe
+    un détail distinctif du titre fournisseur — mais UNIQUEMENT d'une catégorie ACTIVÉE
+    (`title_attributes`). Si l'utilisateur a décoché « couleur » et « dimensions », on ne
+    les ajoutera jamais. Dernier recours (produits identiques sur toutes les catégories
+    cochées) : suffixe numérique.
+
+    Args:
+        h1               : titre H1 généré
+        original_title   : titre fournisseur d'origine (contient les détails distinctifs)
+        used_titles      : set des H1 déjà attribués (mis à jour par l'appelant)
+        title_attributes : dict {clé: bool} des catégories autorisées (None = toutes)
+
+    Returns:
+        str : un H1 non encore présent dans used_titles
+    """
+    if h1 not in used_titles:
+        return h1
+    attrs    = resolve_title_attributes(title_attributes)
+    h1_words = set(_normalize_col_text(h1).split())
+    orig     = [w.strip(".,;:()[]") for w in (original_title or "").split()]
+
+    def cat_words(catset):
+        return [w for w in orig
+                if _normalize_col_text(w) in catset and _normalize_col_text(w) not in h1_words]
+
+    def feature_words():
+        out = []
+        for w in orig:
+            wn = _normalize_col_text(w)
+            if (len(wn) >= 3 and wn not in h1_words and wn not in _GENERIC_ATTR_WORDS
+                    and wn not in _MAILLAGE_STOPWORDS and not any(ch.isdigit() for ch in wn)):
+                out.append(w)
+        return out
+
+    # Catégories → extracteurs de tokens distinctifs (ordre de priorité).
+    cats = [
+        ("dimensions",         lambda: [m.group(0).replace(" ", "") for m in _DIM_RE.finditer(original_title or "")]),
+        ("commercial_keyword", lambda: cat_words(_COMMERCIAL_WORDS)),
+        ("feature",            feature_words),
+        ("material",           lambda: cat_words(_MATERIAL_WORDS)),
+        ("style",              lambda: cat_words(_STYLE_WORDS)),
+        ("color",              lambda: cat_words(_COLOR_WORDS)),
+    ]
+
+    def first_unique(selected):
+        for _, extract in selected:
+            for c in extract():
+                cand = f"{h1} {c}".strip()
+                if cand and cand not in used_titles:
+                    return cand
+        return None
+
+    # 1) D'abord les catégories COCHÉES par l'utilisateur.
+    res = first_unique([c for c in cats if attrs.get(c[0])])
+    if res:
+        return res
+    # 2) Dernier recours : catégories DÉCOCHÉES (départage couleur/dimension…) —
+    #    uniquement pour les produits sinon strictement identiques.
+    res = first_unique([c for c in cats if not attrs.get(c[0])])
+    if res:
+        return res
+    # 3) Vraiment aucun détail distinctif → suffixe numérique.
+    n = 2
+    while f"{h1} {n}" in used_titles:
+        n += 1
+    return f"{h1} {n}"
+
+
+def select_collections_for_product(product_title, supplier_description, boost_cfg, product_tags=None):
     """
     Sélectionne les collections pour le maillage interne d'un produit.
 
-    Matching basé sur le TEXTE du produit (titre + description fournisseur),
-    pas sur les tags Shopify — plus robuste et 100% générique (toute niche).
+    Matching, par ordre de priorité :
+      A. TAGS Shopify du produit (si présents) — source la plus fiable, car les
+         smart collections sont construites sur « tag equals {nom de collection} ».
+         Une collection est retenue si son nom (ou un de ses tags de config) figure
+         dans les tags du produit.
+      B. Sinon (produit sans tags) : matching sur le TEXTE (titre + description) —
+         mots distinctifs du nom de collection, 100% générique (toute niche).
 
-    Structure :
+    Structure du résultat :
       1. mainCollection — TOUJOURS présente (collection principale)
-      2. 1 collection TYPE     — matchée par le texte du produit (design, bois, hamac…)
-      3. 1 collection VARIATION — matchée par le texte du produit (xxl, beige, petit…)
-
-    Logique de matching : les mots-clés de chaque collection (tags ou nom)
-    doivent apparaître dans le contexte produit normalisé.
+      2. 1 collection TYPE     (design, bois, hamac…)
+      3. 1 collection VARIATION (xxl, beige, petit…)
 
     Args:
         product_title        : titre du produit Shopify
         supplier_description : description fournisseur (texte brut, sans HTML)
         boost_cfg            : dict seo_boost (mainCollection + collections)
+        product_tags         : tags Shopify du produit (str CSV ou list) — optionnel
 
     Returns:
         list : max 3 dicts [{name, url, volume}]
@@ -192,6 +328,20 @@ def select_collections_for_product(product_title, supplier_description, boost_cf
 
     # Contexte produit normalisé (titre + description)
     product_context = _normalize_col_text(f"{product_title} {supplier_description}")
+    product_words   = set(product_context.split())
+
+    # Mots génériques à ignorer quand on matche sur le NOM d'une collection :
+    # les mots de la niche + de la collection principale (ex: "boite", "bijoux")
+    # apparaissent partout et ne sont donc pas distinctifs.
+    niche_keyword = boost_cfg.get("niche_keyword", "")
+    main_name     = main_col.get("name", "") if main_col else ""
+    generic_words = _MAILLAGE_STOPWORDS | set(
+        _normalize_col_text(f"{niche_keyword} {main_name}").split()
+    )
+
+    # Tags Shopify du produit — signal prioritaire (le produit est réellement
+    # dans la collection dont le nom = un de ses tags).
+    tag_set = _parse_tag_set(product_tags)
 
     matched_type      = []
     matched_variation = []
@@ -200,22 +350,32 @@ def select_collections_for_product(product_title, supplier_description, boost_cf
         if not col.get("url"):
             continue
 
-        # Mots-clés de la collection : utilise les tags définis, sinon le nom
-        col_tags_raw = col.get("tags") or [col.get("name", "")]
-        col_keywords = [_normalize_col_text(t) for t in col_tags_raw if t]
+        # A. Correspondance exacte par TAG produit (nom de collection = condition
+        #    de la smart collection ; + eventuels tags de config).
+        conditions = {_normalize_col_text(col.get("name", ""))}
+        for t in (col.get("tags") or []):
+            conditions.add(_normalize_col_text(t))
+        tag_match = bool(tag_set & {c for c in conditions if c})
 
-        # Match : au moins un mot-clé de la collection est présent dans le contexte produit
-        is_match = any(
-            kw and kw in product_context
-            for kw in col_keywords
-        )
-        if not is_match:
+        # B. Fallback texte (comble les produits sous-taggés).
+        if col.get("tags"):
+            col_keywords = [_normalize_col_text(t) for t in col["tags"] if t]
+            text_match = any(kw and kw in product_context for kw in col_keywords)
+        else:
+            distinctive = [
+                w for w in _normalize_col_text(col.get("name", "")).split()
+                if len(w) >= 3 and w not in generic_words
+            ]
+            text_match = any(w in product_words for w in distinctive)
+
+        if not (tag_match or text_match):
             continue
 
         col_data = {
-            "name":   col.get("name", ""),
-            "url":    col["url"],
-            "volume": col.get("volume", 0),
+            "name":    col.get("name", ""),
+            "url":     col["url"],
+            "volume":  col.get("volume", 0),
+            "_by_tag": tag_match,   # priorite de tri (interne) : les tags priment
         }
 
         # Catégorie : explicite dans config OU auto-détection par nom
@@ -228,21 +388,26 @@ def select_collections_for_product(product_title, supplier_description, boost_cf
         else:
             matched_type.append(col_data)
 
-    # 2. Meilleure TYPE par volume
-    matched_type.sort(key=lambda c: c["volume"], reverse=True)
+    # Tri : d'abord les collections confirmées par TAG, puis par volume décroissant.
+    sort_key = lambda c: (c["_by_tag"], c["volume"])
+    matched_type.sort(key=sort_key, reverse=True)
+    matched_variation.sort(key=sort_key, reverse=True)
+
+    # 2. Meilleure TYPE   3. Meilleure VARIATION
     if matched_type:
         selected.append(matched_type[0])
-
-    # 3. Meilleure VARIATION par volume
-    matched_variation.sort(key=lambda c: c["volume"], reverse=True)
     if matched_variation:
         selected.append(matched_variation[0])
 
-    # Fallbacks si un type manque
+    # Fallbacks si une catégorie manque → prend la 2e de l'autre catégorie
     if not matched_type and len(matched_variation) > 1:
         selected.append(matched_variation[1])
     if not matched_variation and len(matched_type) > 1:
         selected.append(matched_type[1])
+
+    # Nettoie la clé interne de tri
+    for c in selected:
+        c.pop("_by_tag", None)
 
     return selected
 
@@ -615,7 +780,55 @@ def format_keywords_for_prompt(matched_keywords, niche_keyword=""):
 
 # ── Phase de génération ───────────────────────────────────────────────────────
 
-def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tracker):
+# ── Préservation de la description fournisseur ────────────────────────────────
+# Au 1er run, body_html contient la description fournisseur (source de génération).
+# Comme SEO Boost écrase body_html par le contenu généré, on sauvegarde l'original
+# dans un metafield : les runs suivants régénèrent depuis la vraie source, jamais
+# par-dessus le texte déjà généré.
+SUPPLIER_DESC_NAMESPACE = "custom"
+SUPPLIER_DESC_KEY       = "description_fournisseur"
+
+
+def resolve_supplier_description(product, base_url, headers):
+    """
+    Retourne la description fournisseur (texte brut) à utiliser comme source de
+    génération, en préservant l'original entre les runs.
+
+    - Si le metafield custom.description_fournisseur existe → on l'utilise
+      (source d'origine, même après que body_html ait été écrasé par du SEO).
+    - Sinon (1er passage) → body_html EST la source d'origine : on la sauvegarde
+      dans le metafield, puis on l'utilise.
+
+    Returns:
+        str : description fournisseur en texte brut (sans HTML)
+    """
+    product_id = product.get("id")
+    try:
+        metafields = fetch_product_metafields(product_id, base_url, headers)
+    except Exception as e:
+        # Échec de lecture → repli sur body_html (comportement d'origine)
+        log(f"Lecture description_fournisseur échouée ({product.get('handle')!r}) : {e}", "warning")
+        return strip_html(product.get("body_html", ""))
+
+    backup = (metafields.get(SUPPLIER_DESC_KEY) or "").strip()
+    if backup:
+        return strip_html(backup)
+
+    # 1er passage : body_html = description fournisseur d'origine → sauvegarde
+    original_html = product.get("body_html", "") or ""
+    if original_html.strip():
+        try:
+            set_product_metafield(
+                product_id, SUPPLIER_DESC_NAMESPACE, SUPPLIER_DESC_KEY,
+                original_html, "multi_line_text_field", base_url, headers,
+            )
+            log(f"Description fournisseur sauvegardée — {product.get('handle')!r}")
+        except Exception as e:
+            log(f"Sauvegarde description_fournisseur échouée ({product.get('handle')!r}) : {e}", "warning")
+    return strip_html(original_html)
+
+
+def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tracker, base_url, headers):
     """
     Génère les données SEO pour chaque produit via OpenAI.
 
@@ -647,6 +860,11 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
     generate_meta_desc = boost_cfg.get("generate_meta_description", True)
     generate_desc      = boost_cfg.get("generate_description", True)
     word_count         = boost_cfg.get("word_count", 200)
+    title_attributes   = boost_cfg.get("title_attributes")   # cases à cocher du titre (None = tout)
+    niche_mode         = (boost_cfg.get("niche_mode") or "fixed").strip().lower()  # fixed | thematic
+    niches             = boost_cfg.get("niches") or []       # liste des niches (mode thématique)
+    natural_titles     = bool(boost_cfg.get("natural_titles", False))  # H1 naturel IA vs template
+    title_use_image    = bool(boost_cfg.get("title_use_image", False))  # envoyer la 1ère photo à l'IA
 
     # État partagé pour la détection de variantes couleur (cross-produits)
     branding_state = {
@@ -656,12 +874,41 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
     }
 
     all_products_data = []
+    used_titles  = set()   # anti-doublon de titre (→ handles uniques, pas de -1/-2 Shopify)
+    used_handles = set()
+
+    # Amorçage anti-doublon PAR BOUTIQUE : on injecte les titres/handles des produits
+    # DÉJÀ en ligne qui ne sont PAS dans ce run → les nouveaux produits (run partiel,
+    # ajout ultérieur) éviteront les titres existants. On exclut les produits du run
+    # en cours pour ne pas les bloquer avec leur propre ancien titre.
+    batch_ids = {p.get("id") for p in products}
+    try:
+        for existing in fetch_all_products(base_url, headers):
+            if existing.get("id") not in batch_ids:
+                if existing.get("title"):
+                    used_titles.add(existing["title"])
+                if existing.get("handle"):
+                    used_handles.add(existing["handle"])
+        if used_titles:
+            log(f"Anti-doublon amorcé avec {len(used_titles)} titre(s) déjà en ligne")
+    except Exception as e:
+        log(f"Amorçage anti-doublon (titres existants) échoué : {e}", "warning")
 
     for product in tqdm(products, desc="Génération SEO"):
         product_keyword      = product.get("title", "")
         handle               = product.get("handle", "")
-        supplier_description = strip_html(product.get("body_html", ""))
-        niche_kw             = niche_keyword or product_keyword
+        # Source = description fournisseur préservée (metafield) si dispo, sinon
+        # body_html d'origine (qu'on sauvegarde alors pour les runs suivants).
+        supplier_description = resolve_supplier_description(product, base_url, headers)
+        # Base du titre : soit la niche fixe (mono-niche), soit le TYPE réel détecté
+        # par l'IA depuis la description (boutique thématique) — ex: "Boîte à Montre".
+        if niche_mode == "thematic":
+            niche_kw = generate_product_type(
+                product_keyword, supplier_description, niche_keyword,
+                openai_client, cost_tracker, niches=niches,
+            )
+        else:
+            niche_kw = niche_keyword or product_keyword
 
         log(f"Génération SEO — {handle!r} | title: {product_keyword!r}")
 
@@ -688,13 +935,51 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
             else:
                 branding_name = ""
 
-            # ── Differentiator → H1 → meta title ─────────────────────────────
-            differentiator = generate_differentiator(
-                product_keyword, niche_kw, supplier_description,
-                seo_keywords_block, openai_client, cost_tracker,
-            )
-            h1         = build_h1(branding_name, niche_kw, differentiator, branding_position, title_style)
-            meta_title = build_meta_title(niche_kw, differentiator, vendor)
+            # 1ère photo (option : l'IA la « voit » pour un titre plus juste — couleur, forme)
+            first_image = ""
+            if title_use_image:
+                imgs = product.get("images") or []
+                first_image = (imgs[0].get("src") or "") if imgs else ""
+
+            # ── H1 + meta title : mode NATUREL (IA) ou TEMPLATE (niche + attributs) ──
+            differentiator = ""   # inutilisé en mode naturel
+            if natural_titles:
+                h1, meta_title = generate_natural_title(
+                    product_keyword, supplier_description, niche_kw, title_attributes,
+                    branding_name, branding_position, title_style, openai_client, cost_tracker,
+                    seo_keywords=seo_keywords_block, image_url=first_image,
+                )
+            else:
+                differentiator = generate_differentiator(
+                    product_keyword, niche_kw, supplier_description,
+                    seo_keywords_block, openai_client, cost_tracker,
+                    title_attributes=title_attributes,
+                )
+                h1 = build_h1(branding_name, niche_kw, differentiator, branding_position, title_style)
+                meta_title = build_meta_title(niche_kw, differentiator, vendor)
+
+            # ── Titre UNIQUE ──────────────────────────────────────────────────
+            # 1) L'IA d'abord : si le titre est déjà pris, on redemande une variante distincte.
+            avoid_titles = []
+            while h1 in used_titles and len(avoid_titles) < 2:
+                avoid_titles.append(h1)
+                if natural_titles:
+                    h1, meta_title = generate_natural_title(
+                        product_keyword, supplier_description, niche_kw, title_attributes,
+                        branding_name, branding_position, title_style, openai_client, cost_tracker,
+                        avoid=avoid_titles, seo_keywords=seo_keywords_block, image_url=first_image,
+                    )
+                else:
+                    differentiator = generate_differentiator(
+                        product_keyword, niche_kw, supplier_description,
+                        seo_keywords_block, openai_client, cost_tracker,
+                        title_attributes=title_attributes, avoid=avoid_titles,
+                    )
+                    h1 = build_h1(branding_name, niche_kw, differentiator, branding_position, title_style)
+                    meta_title = build_meta_title(niche_kw, differentiator, vendor)
+            # 2) Filet déterministe si l'IA n'a pas suffi (produits quasi identiques)
+            h1 = make_unique_title(h1, product_keyword, used_titles, title_attributes)
+            used_titles.add(h1)
 
             # ── Meta description ──────────────────────────────────────────────
             # Utilise le H1 comme productKeyword (identique au JS transform-boost.js)
@@ -706,7 +991,9 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
                 )
 
             # ── Sélection des collections pour le maillage interne ────────────
-            selected_collections = select_collections_for_product(product_keyword, supplier_description, boost_cfg)
+            selected_collections = select_collections_for_product(
+                product_keyword, supplier_description, boost_cfg, product.get("tags")
+            )
             if selected_collections:
                 col_names = " → ".join(c["name"] for c in selected_collections)
                 log(f"Maillage ({len(selected_collections)} lien(s)) : {col_names}")
@@ -725,8 +1012,14 @@ def _generation_phase(products, boost_cfg, all_keywords, openai_client, cost_tra
             # Générées ici car supplier_description = body_html original (avant écrasement SEO)
             caracteristique = generate_specs(product_keyword, supplier_description, openai_client, cost_tracker)
 
-            # ── Handle ────────────────────────────────────────────────────────
+            # ── Handle unique (le titre a déjà été rendu unique plus haut) ────
             handle_nouveau = generate_handle(h1)
+            if handle_nouveau in used_handles:           # sécurité slug (accents, etc.)
+                base, k = handle_nouveau, 2
+                while f"{base}-{k}" in used_handles:
+                    k += 1
+                handle_nouveau = f"{base}-{k}"
+            used_handles.add(handle_nouveau)
 
             all_products_data.append({
                 "product": product,
@@ -783,11 +1076,42 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
         print("[ANNULÉ] Aucune modification effectuée dans Shopify.")
         return False
 
+    # ── Snapshot avant écrasement (retour en arrière possible) ──
+    # On sauvegarde title/handle/body_html ET l'état AVANT des metafields écrits par
+    # SEO Boost (meta title/desc, caractéristiques) → le rollback peut les restaurer/supprimer.
+    try:
+        for e in all_products_data:
+            p = e["product"]
+            try:
+                existing = fetch_all_product_metafields(p["id"], base_url, headers)
+                by_key   = {(m.get("namespace"), m.get("key")): m for m in existing}
+                p["_metafields_backup"] = [
+                    {
+                        "namespace": ns, "key": key,
+                        "value": by_key[(ns, key)].get("value") if (ns, key) in by_key else None,
+                        "type":  by_key[(ns, key)].get("type")  if (ns, key) in by_key else None,
+                    }
+                    for ns, key in SEO_BOOST_METAFIELDS
+                ]
+            except Exception as ex:
+                log(f"Snapshot metafields échoué ({p.get('handle')!r}) : {ex}", "warning")
+                p["_metafields_backup"] = []
+
+        snap_path = save_snapshot(
+            store_path, "seo_boost",
+            [e["product"] for e in all_products_data],
+            ["title", "handle", "body_html", "_metafields_backup"],
+        )
+        print(f"[BACKUP] État d'origine sauvegardé → {snap_path}")
+        log(f"Snapshot SEO Boost créé : {snap_path}")
+    except Exception as e:
+        log(f"Échec création snapshot SEO Boost : {e}", "warning", also_print=True)
+
     # ── Injection ──
     print("\n[INJ] Injection dans Shopify...")
     log("Début injection SEO Boost")
 
-    last_index, completed_handles = load_progress(store_path)
+    last_index, completed_handles = load_progress(store_path, "seo_boost")
     if last_index >= 0:
         print(f"[REPRISE] Checkpoint détecté — reprise depuis le produit {last_index + 1}")
 
@@ -795,40 +1119,46 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     fail_count    = 0
     injection_log = []
 
-    for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
-        product  = entry["product"]
-        seo_data = entry["seo_data"]
-        handle   = product.get("handle", "")
+    # Verrou boutique : sérialise les écritures si plusieurs features tournent en parallèle.
+    store_lock = StoreLock(store_path, "seo_boost")
+    store_lock.acquire(wait_message="  ⏳ Une autre feature ({feature}) écrit sur Shopify — attente de son tour...")
+    try:
+        for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
+            product  = entry["product"]
+            seo_data = entry["seo_data"]
+            handle   = product.get("handle", "")
 
-        if handle in completed_handles:
-            log(f"Skip (déjà injecté) : {handle}")
-            continue
+            if handle in completed_handles:
+                log(f"Skip (déjà injecté) : {handle}")
+                continue
 
-        print(f"\n  → {handle} ({idx+1}/{len(all_products_data)})")
-        log(f"Injection {idx+1}/{len(all_products_data)} : {handle}")
+            print(f"\n  → {handle} ({idx+1}/{len(all_products_data)})")
+            log(f"Injection {idx+1}/{len(all_products_data)} : {handle}")
 
-        try:
-            inject_product_seo(
-                product,
-                seo_data,
-                base_url,
-                headers,
-                generate_meta_desc=generate_meta_desc,
-                generate_description=generate_desc,
-            )
-            success_count += 1
-            completed_handles.append(handle)
-            save_progress(store_path, idx, completed_handles)
-            log(f"SUCCÈS — {handle}")
-            print(f"  ✓ {handle}")
-            injection_log.append({"product": product, "seo_data": seo_data, "statut": "OK"})
+            try:
+                inject_product_seo(
+                    product,
+                    seo_data,
+                    base_url,
+                    headers,
+                    generate_meta_desc=generate_meta_desc,
+                    generate_description=generate_desc,
+                )
+                success_count += 1
+                completed_handles.append(handle)
+                save_progress(store_path, idx, completed_handles, "seo_boost")
+                log(f"SUCCÈS — {handle}")
+                print(f"  ✓ {handle}")
+                injection_log.append({"product": product, "seo_data": seo_data, "statut": "OK"})
 
-        except Exception as e:
-            fail_count += 1
-            log(f"ÉCHEC — {handle} | {e}", "error", also_print=True)
-            print(f"  ✗ {handle} — {e}")
-            injection_log.append({"product": product, "seo_data": seo_data, "statut": "ERREUR", "erreur": str(e)})
-            continue
+            except Exception as e:
+                fail_count += 1
+                log(f"ÉCHEC — {handle} | {e}", "error", also_print=True)
+                print(f"  ✗ {handle} — {e}")
+                injection_log.append({"product": product, "seo_data": seo_data, "statut": "ERREUR", "erreur": str(e)})
+                continue
+    finally:
+        store_lock.release()
 
     # ── Rapport post-injection ──
     if injection_log:
@@ -850,7 +1180,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     print("=" * 60)
 
     if fail_count == 0:
-        clear_progress(store_path)
+        clear_progress(store_path, "seo_boost")
         log("Progression effacée — tous les produits SEO Boost traités.")
 
     return fail_count == 0
@@ -909,7 +1239,7 @@ def run(store_config, store_path):
 
         elif choice == "n":
             clear_seo_boost_cache(store_path)
-            clear_progress(store_path)
+            clear_progress(store_path, "seo_boost")
             print("[INFO] Cache effacé — reprise depuis le début.\n")
 
         else:
@@ -932,10 +1262,13 @@ def run(store_config, store_path):
     headers       = shopify_headers(store_config["access_token"])
     openai_client = OpenAI(api_key=store_config["openai_key"])
 
-    # ── 3. Récupération des produits (avec body_html) ─────────────────────────
+    # ── 3. Récupération des produits (avec body_html ; + images si titre par image) ──
     product_status = ask_product_status()
     print("\n[3/4] Récupération des produits Shopify...")
-    products = fetch_all_products_full(base_url, headers, status=product_status)
+    if boost_cfg.get("natural_titles") and boost_cfg.get("title_use_image"):
+        products = fetch_all_products_with_images(base_url, headers, status=product_status)
+    else:
+        products = fetch_all_products_full(base_url, headers, status=product_status)
 
     if not products:
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)
@@ -947,7 +1280,7 @@ def run(store_config, store_path):
     # ── 4. Génération des données SEO via OpenAI ──────────────────────────────
     print("\n[4/4] Génération SEO via OpenAI...")
     all_products_data = _generation_phase(
-        products, boost_cfg, all_keywords, openai_client, cost_tracker
+        products, boost_cfg, all_keywords, openai_client, cost_tracker, base_url, headers
     )
 
     cost_summary = cost_tracker.summary()
@@ -958,9 +1291,14 @@ def run(store_config, store_path):
         log("Aucune donnée SEO générée — arrêt.", "error", also_print=True)
         sys.exit(1)
 
-    # ── Sauvegarde du cache ───────────────────────────────────────────────────
+    # ── Sauvegarde du cache (reprise) + archive permanente (re-poussable) ─────
     save_seo_boost_cache(store_path, all_products_data, store_config["store_url"])
     log(f"Cache SEO Boost sauvegardé — {len(all_products_data)} produit(s)")
+    try:
+        arch = save_generated(store_path, "seo_boost", all_products_data, store_config["store_url"])
+        log(f"Archive SEO Boost (permanente) : {arch}")
+    except Exception as e:
+        log(f"Échec archive SEO Boost : {e}", "warning")
 
     # ── Phase d'injection ─────────────────────────────────────────────────────
     success = _injection_phase(

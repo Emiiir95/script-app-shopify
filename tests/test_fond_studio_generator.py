@@ -4,10 +4,13 @@ Tests unitaires — features/fond_studio/generator.py
 Couvre : download_image, _guess_name, regenerate_on_background
 """
 import base64
+import io
 import unittest
 from unittest.mock import patch, MagicMock
 
-from features.fond_studio.generator import download_image, _guess_name, regenerate_on_background
+from features.fond_studio.generator import (
+    download_image, _guess_name, make_image_buffer, regenerate_on_background,
+)
 
 
 class TestDownloadImage(unittest.TestCase):
@@ -32,6 +35,13 @@ class TestGuessName(unittest.TestCase):
         self.assertTrue(_guess_name("https://cdn/noext").endswith(".png"))
 
 
+class TestMakeImageBuffer(unittest.TestCase):
+    def test_returns_named_buffer(self):
+        buf = make_image_buffer(b"data", "https://cdn/p.webp")
+        self.assertEqual(buf.read(), b"data")
+        self.assertTrue(buf.name.endswith(".webp"))
+
+
 class TestRegenerateOnBackground(unittest.TestCase):
     def _client_returning(self, raw_bytes):
         b64 = base64.b64encode(raw_bytes).decode("ascii")
@@ -39,35 +49,43 @@ class TestRegenerateOnBackground(unittest.TestCase):
         client.images.edit.return_value = MagicMock(data=[MagicMock(b64_json=b64)])
         return client
 
+    def _buf(self, name="produit.png"):
+        b = io.BytesIO(b"img"); b.name = name; return b
+
     def test_returns_decoded_bytes(self):
         client = self._client_returning(b"NEWPNG")
-        out = regenerate_on_background(b"orig", "https://cdn/p.jpg", "blanc", client)
+        out = regenerate_on_background([self._buf()], "mon prompt", client)
         self.assertEqual(out, b"NEWPNG")
 
-    def test_passes_model_size_format(self):
+    def test_single_image_sent_as_buffer_not_list(self):
         client = self._client_returning(b"x")
-        regenerate_on_background(b"o", "https://cdn/p.png", "beige", client, size="1024x1536", output_format="webp")
+        regenerate_on_background([self._buf()], "p", client)
+        _, kwargs = client.images.edit.call_args
+        self.assertFalse(isinstance(kwargs["image"], list))   # 1 image → buffer direct
+
+    def test_multiple_images_sent_as_list(self):
+        client = self._client_returning(b"x")
+        regenerate_on_background([self._buf(), self._buf(), self._buf()], "p", client)
+        _, kwargs = client.images.edit.call_args
+        self.assertIsInstance(kwargs["image"], list)          # plusieurs → liste
+        self.assertEqual(len(kwargs["image"]), 3)
+
+    def test_forwards_prompt_size_format(self):
+        client = self._client_returning(b"x")
+        regenerate_on_background([self._buf()], "PROMPT TEST", client, size="1024x1536", output_format="webp")
 
         _, kwargs = client.images.edit.call_args
         self.assertEqual(kwargs["model"], "gpt-image-1")
         self.assertEqual(kwargs["size"], "1024x1536")
         self.assertEqual(kwargs["output_format"], "webp")
         self.assertEqual(kwargs["quality"], "medium")   # qualité normale, fixe
-        self.assertIn("beige", kwargs["prompt"])
+        self.assertEqual(kwargs["prompt"], "PROMPT TEST")
 
     def test_default_output_format_is_png(self):
         client = self._client_returning(b"x")
-        regenerate_on_background(b"o", "https://cdn/p.png", "blanc", client)
+        regenerate_on_background([self._buf()], "p", client)
         _, kwargs = client.images.edit.call_args
         self.assertEqual(kwargs["output_format"], "png")
-
-    def test_attaches_image_with_name(self):
-        client = self._client_returning(b"x")
-        regenerate_on_background(b"origbytes", "https://cdn/p.webp", "blanc", client)
-
-        _, kwargs = client.images.edit.call_args
-        buf = kwargs["image"]
-        self.assertTrue(buf.name.endswith(".webp"))
 
 
 if __name__ == "__main__":

@@ -16,10 +16,13 @@ Flow :
 
 Config config.json :
   "fond_studio": {
-    "background_color": "#FFFFFF",   // hex (via palette) ou nom, ex: "beige"
-    "size":           "1024x1024",   // optionnel
-    "output_format":  "png",         // optionnel : png | jpeg | webp
-    "product_status": "all"          // optionnel : all | active | draft (sinon demandé au lancement)
+    "background_type":  "color",     // color | scene
+    "background_color": "#FFFFFF",   // si color : hex (via palette) ou nom, ex: "beige"
+    "scene_template":   "luxe",      // si scene : minimaliste|luxe|mode|nature|beaute|maison|tech|cuisine|enfant|sport
+    "size":             "1024x1024", // optionnel
+    "output_format":    "png",       // optionnel : png | jpeg | webp
+    "product_status":   "all",       // optionnel : all | active | draft (sinon demandé au lancement)
+    "reference_images": 1            // optionnel : 1..4 images du produit envoyées à l'IA (plus = + fidèle, + cher)
   }
 """
 
@@ -30,10 +33,12 @@ from tqdm import tqdm
 
 from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
 from shopify.products import fetch_all_products_with_images
-from features.fond_studio.generator import download_image, regenerate_on_background
+from features.fond_studio.generator import download_image, make_image_buffer, regenerate_on_background
+from features.fond_studio.prompts import build_background_prompt, build_scene_prompt, SCENE_TEMPLATES
 from features.fond_studio.injector import add_first_image, generate_injection_report
 from utils.logger import log, LOG_FILE
 from utils.checkpoint import save_progress, load_progress, clear_progress
+from utils.lock import StoreLock
 from utils.product_filter import ask_product_status
 
 # Prix indicatif gpt-image-1 par image générée (qualité medium) — USD.
@@ -42,9 +47,9 @@ _PRICE_PER_IMAGE   = {"1024x1024": 0.042, "1024x1536": 0.063, "1536x1024": 0.063
 _INPUT_IMAGE_COST  = 0.012   # ~ coût de la photo d'entrée envoyée à l'édition
 
 
-def _estimate_cost(n_images, size):
-    """Estimation du coût OpenAI total (USD) pour n images."""
-    per = _PRICE_PER_IMAGE.get(size, 0.042) + _INPUT_IMAGE_COST
+def _estimate_cost(n_images, size, ref_images=1):
+    """Estimation du coût OpenAI total (USD). ref_images = nb d'images envoyées en entrée."""
+    per = _PRICE_PER_IMAGE.get(size, 0.042) + _INPUT_IMAGE_COST * max(1, ref_images)
     return n_images * per, per
 
 
@@ -58,10 +63,25 @@ def run(store_config, store_path):
     """
     store_name = store_config.get("name", "boutique")
     cfg           = store_config.get("fond_studio", {})
+    bg_type       = cfg.get("background_type", "color")
     color         = (cfg.get("background_color") or "").strip()
     size          = cfg.get("size", "1024x1024")
     output_format = cfg.get("output_format", "png")
     quality       = "medium"   # qualité normale, fixe
+    try:
+        reference_images = int(cfg.get("reference_images", 1) or 1)
+    except (ValueError, TypeError):
+        reference_images = 1
+    reference_images = max(1, min(4, reference_images))   # plafond 1..4
+
+    # Prompt selon le type de fond : couleur unie OU mise en scène (template par niche)
+    if bg_type == "scene":
+        scene    = cfg.get("scene_template", "minimaliste")
+        prompt   = build_scene_prompt(scene)
+        bg_label = "mise en scène — " + SCENE_TEMPLATES.get(scene, {}).get("label", scene)
+    else:
+        prompt   = build_background_prompt(color)
+        bg_label = "couleur unie — " + (color or "?")
 
     log("=" * 60)
     log(f"Démarrage feature Fond Studio — boutique : {store_name}")
@@ -70,9 +90,10 @@ def run(store_config, store_path):
     print(f"  Logs : {LOG_FILE}")
     print("=" * 60)
 
-    if not color:
+    if bg_type != "scene" and not color:
         print("\n[INFO] Aucune couleur de fond définie dans config.json.")
         print('  → Ajoutez "fond_studio": { "background_color": "blanc" } dans votre config.json')
+        print('  → Ou choisissez une mise en scène : { "background_type": "scene", "scene_template": "luxe" }')
         return
 
     # ── Connexion ─────────────────────────────────────────────────────────────
@@ -103,7 +124,8 @@ def run(store_config, store_path):
     print("─" * 50)
     print(f"  Produits avec image : {len(targets)}")
     print(f"  Statut traité       : {product_status or 'tous'}")
-    print(f"  Couleur du fond     : {color!r}")
+    print(f"  Fond                : {bg_label}")
+    print(f"  Images de référence : {reference_images} par produit")
     print(f"  Taille / format     : {size} / {output_format}")
     print("─" * 50)
     print("\n  Règles :")
@@ -111,7 +133,7 @@ def run(store_config, store_path):
     print("  • La nouvelle image devient la 1ère — l'ancienne 1ère est conservée juste après")
     print("─" * 50)
 
-    total_cost, per_image = _estimate_cost(len(targets), size)
+    total_cost, per_image = _estimate_cost(len(targets), size, reference_images)
     print("\n  ESTIMATION COÛT OPENAI (gpt-image-1, qualité normale)")
     print("─" * 50)
     print(f"  Images à générer    : {len(targets)}")
@@ -130,13 +152,17 @@ def run(store_config, store_path):
 
     # ── Injection (avec reprise) ──────────────────────────────────────────────
     print("\n[2/3] Régénération et injection en cours...")
-    last_index, completed_handles = load_progress(store_path)
+    last_index, completed_handles = load_progress(store_path, "fond_studio")
     if last_index >= 0:
         print(f"[REPRISE] Checkpoint détecté — reprise depuis le produit {last_index + 1}")
 
     ok_count      = 0
     fail_count    = 0
     injection_log = []
+
+    # Verrou boutique : sérialise les écritures si plusieurs features tournent en parallèle.
+    store_lock = StoreLock(store_path, "fond_studio")
+    store_lock.acquire(wait_message="  ⏳ Une autre feature ({feature}) écrit sur Shopify — attente de son tour...")
 
     for idx, product in enumerate(tqdm(targets, desc="Images régénérées")):
         handle     = product.get("handle", "")
@@ -147,15 +173,18 @@ def run(store_config, store_path):
             continue
 
         try:
-            first_url  = product["images"][0].get("src", "")
             alt        = product.get("title", "")
-            img_bytes  = download_image(first_url)
-            new_png    = regenerate_on_background(img_bytes, first_url, color, openai_client, size, output_format, quality)
+            # N premières images du produit → références envoyées à l'IA
+            srcs       = [im.get("src", "") for im in product["images"][:reference_images] if im.get("src")]
+            if not srcs:
+                raise Exception("aucune image téléchargeable")
+            buffers    = [make_image_buffer(download_image(src), src) for src in srcs]
+            new_png    = regenerate_on_background(buffers, prompt, openai_client, size, output_format, quality)
             image      = add_first_image(product_id, new_png, alt, base_url, headers)
 
             ok_count += 1
             completed_handles.append(handle)
-            save_progress(store_path, idx, completed_handles)
+            save_progress(store_path, idx, completed_handles, "fond_studio")
             injection_log.append({
                 "handle": handle, "product_id": product_id,
                 "new_image_id": image.get("id", ""), "statut": "OK", "erreur": "",
@@ -170,6 +199,8 @@ def run(store_config, store_path):
                 "new_image_id": "", "statut": "ERREUR", "erreur": str(e),
             })
             continue
+
+    store_lock.release()
 
     # ── Rapport + résumé ──────────────────────────────────────────────────────
     print("\n[3/3] Génération du rapport...")
@@ -186,5 +217,5 @@ def run(store_config, store_path):
     print("=" * 60)
 
     if fail_count == 0:
-        clear_progress(store_path)
+        clear_progress(store_path, "fond_studio")
         log("Progression effacée — tous les produits Fond Studio traités.")

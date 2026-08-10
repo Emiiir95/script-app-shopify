@@ -1,4 +1,4 @@
-from shopify.client import shopify_get, shopify_get_paginated, shopify_post, shopify_put, graphql_request
+from shopify.client import shopify_get, shopify_get_paginated, shopify_post, shopify_put, shopify_delete, graphql_request
 from utils.logger import log
 
 
@@ -50,10 +50,14 @@ def fetch_all_products_full(base_url, headers, status=None):
 
 
 def fetch_all_products_with_variants(base_url, headers, status=None):
-    """Fetch tous les produits avec leurs variantes (pour Normalisation)."""
+    """Fetch tous les produits avec leurs variantes (pour Normalisation).
+
+    Inclut product_type et tags : servent au classement par catégorie
+    (match_category_rule) sur les boutiques thématiques.
+    """
     products = []
     url = f"{base_url}/products.json"
-    params = {"limit": 250, "fields": "id,handle,title,status,variants,options"}
+    params = {"limit": 250, "fields": "id,handle,title,status,variants,options,product_type,tags"}
     if status:
         params["status"] = status
 
@@ -170,6 +174,19 @@ def fetch_product_metafields(product_id, base_url, headers):
         if mf.get("namespace") == "custom":
             result[mf["key"]] = mf.get("value", "")
     return result
+
+
+def fetch_all_product_metafields(product_id, base_url, headers):
+    """Retourne TOUS les metafields d'un produit (tous namespaces) : liste de dicts
+    Shopify {id, namespace, key, value, type, ...}."""
+    url = f"{base_url}/products/{product_id}/metafields.json"
+    data = shopify_get(url, headers)
+    return data.get("metafields", [])
+
+
+def delete_product_metafield(metafield_id, base_url, headers):
+    """Supprime un metafield par son ID. Retourne True si supprimé (ou déjà absent)."""
+    return shopify_delete(f"{base_url}/metafields/{metafield_id}.json", headers)
 
 
 def missing_review_slots(metafields):

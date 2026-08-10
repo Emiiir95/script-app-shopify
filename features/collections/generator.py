@@ -120,7 +120,7 @@ def generate_collection_description(collection_name, niche_keyword, tags,
         except Exception as e:
             log(f"Erreur description collection '{collection_name}' — tentative {attempt+1}/{max_retries} | {e}", "warning")
 
-    fallback = f"<p><strong>{collection_name}</strong> — Collection de {niche_keyword}.</p>"
+    fallback = f"<p><strong>{collection_name}</strong> — Découvrez notre collection {collection_name}.</p>"
     log(f"[WARNING] Fallback description pour collection '{collection_name}'", "warning", also_print=True)
     return fallback
 
@@ -151,7 +151,7 @@ def generate_collection_meta_title(collection_name, niche_keyword, tags,
         except Exception as e:
             log(f"Erreur meta title collection '{collection_name}' — tentative {attempt+1}/{max_retries} | {e}", "warning")
 
-    fallback = f"{collection_name} | {niche_keyword}"[:70]
+    fallback = collection_name[:70]
     log(f"[WARNING] Fallback meta title pour collection '{collection_name}'", "warning", also_print=True)
     return fallback
 
@@ -182,6 +182,6 @@ def generate_collection_meta_desc(collection_name, niche_keyword, tags,
         except Exception as e:
             log(f"Erreur meta desc collection '{collection_name}' — tentative {attempt+1}/{max_retries} | {e}", "warning")
 
-    fallback = f"Découvrez notre collection {collection_name}. {niche_keyword} de qualité sélectionnés pour vous."
+    fallback = f"Découvrez notre collection {collection_name}. Une sélection de qualité choisie pour vous."
     log(f"[WARNING] Fallback meta desc pour collection '{collection_name}'", "warning", also_print=True)
     return fallback

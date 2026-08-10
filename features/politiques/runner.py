@@ -9,7 +9,7 @@ Flow :
   3. Résumé terminal : quelles politiques seront injectées / skippées
   4. Confirmation utilisateur
   5. Remplit les placeholders dans chaque template
-  6. Injecte les politiques intégrées Shopify via GraphQL (shopPoliciesUpdate)
+  6. Injecte les politiques intégrées Shopify via GraphQL (shopPolicyUpdate)
   7. Crée/met à jour la page custom "Politique De Retour" via REST
   8. Rapport CSV post-injection horodaté
 

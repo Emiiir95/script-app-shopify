@@ -32,6 +32,9 @@ from shopify.metaobjects import create_metaobject_type, get_all_metaobject_defin
 from features.normalisation.injector import (
     compute_variant_changes,
     normalize_product,
+    resolve_steps,
+    match_category_rule,
+    resolve_rule_gids,
     generate_injection_report,
     fetch_color_pattern_map,
     create_color_pattern_metaobject,
@@ -150,36 +153,65 @@ def run(store_config, store_path):
 
     vendor            = store_name
     norm_config       = store_config.get("normalisation", {})
+    steps             = resolve_steps(norm_config.get("steps"))  # {prix, stock_taxes, fournisseur, categorie, couleurs}
     category_name     = norm_config.get("product_category_name") or None
     category_search   = norm_config.get("product_category_search") or category_name
-    category_gid      = None
+    category_rules    = norm_config.get("category_rules") or []  # boutique thématique : [{match, name, search?}]
+    price_mode        = norm_config.get("price_mode", "max")   # keep_price | use_compare | max
+    category_gid      = None   # catégorie par défaut (repli) / mono-niche
 
-    if category_search:
-        print(f"\n  → Résolution catégorie Shopify : {category_name or category_search!r}...")
-        category_gid = find_taxonomy_category_gid(category_search, base_url, headers)
-        if category_gid:
-            print(f"  → GID résolu : {category_gid}")
-            log(f"Catégorie résolue : {category_search!r} → {category_gid}")
-        else:
-            log(f"Catégorie introuvable dans la taxonomie Shopify : {category_search!r}", "warning", also_print=True)
+    if steps["categorie"]:
+        # Catégorie par défaut (mono-niche ou repli si aucune règle ne matche)
+        if category_search:
+            print(f"\n  → Résolution catégorie par défaut : {category_name or category_search!r}...")
+            category_gid = find_taxonomy_category_gid(category_search, base_url, headers)
+            if category_gid:
+                print(f"  → GID résolu : {category_gid}")
+                log(f"Catégorie par défaut résolue : {category_search!r} → {category_gid}")
+            else:
+                log(f"Catégorie par défaut introuvable : {category_search!r}", "warning", also_print=True)
+
+        # Règles par mot-clé (boutique thématique) — un GID par règle
+        if category_rules:
+            print(f"\n  → Résolution de {len(category_rules)} règle(s) de catégorie (boutique thématique)...")
+            resolve_rule_gids(category_rules, base_url, headers)
+            for rule in category_rules:
+                term  = rule.get("name") or rule.get("search") or "?"
+                state = f"GID {rule['_gid']}" if rule.get("_gid") else "❌ introuvable"
+                kws   = ", ".join(rule.get("match") or [term])
+                print(f"     • [{kws}] → {term!r}  ({state})")
 
     # ── Résumé + confirmation ─────────────────────────────────────────────────
     _print_summary(products, vendor)
 
+    def _tag(enabled):
+        return "" if enabled else "   [désactivé — laissé intact]"
+
     print("\n[2/3] Règles qui seront appliquées :")
-    print("  • price               = max(price, compare_at_price)")
-    print("  • compare_at          = null")
-    print("  • taxable             = false")
-    print("  • inventory_policy    = deny")
-    print("  • fulfillment_service = manual")
-    print("  • requires_shipping   = true")
-    status_label = "inchangé (brouillon)" if product_status == "draft" else "active"
-    print(f"  • status              = {status_label}")
-    print(f"  • vendor              = {vendor!r}")
-    if category_name:
+    if steps["prix"]:
+        print("  • price               = selon le mode choisi (" + price_mode + ")")
+        print("  • compare_at          = null")
+    else:
+        print("  • prix / prix barré   =" + _tag(False))
+    if steps["stock_taxes"]:
+        print("  • taxable             = false")
+        print("  • inventory_policy    = deny")
+        print("  • fulfillment_service = manual")
+        print("  • requires_shipping   = true")
+    else:
+        print("  • stock / taxes / livraison =" + _tag(False))
+    print(f"  • vendor              = {vendor!r}" + _tag(steps["fournisseur"]))
+    if not steps["categorie"]:
+        print("  • catégorie           =" + _tag(False))
+    elif category_rules:
+        print(f"  • catégorie           = par règle mot-clé ({len(category_rules)} catégorie(s), par produit)")
         if category_name:
-            status = "GID résolu" if category_gid else "❌ non trouvée"
-            print(f"  • catégorie           = {category_name!r}  ({status})")
+            print(f"                          repli : {category_name!r}")
+    elif category_name:
+        status = "GID résolu" if category_gid else "❌ non trouvée"
+        print(f"  • catégorie           = {category_name!r}  ({status})")
+    if not steps["couleurs"]:
+        print("  • couleurs (swatches) =" + _tag(False))
 
     print("\n" + "=" * 60)
     answer = input("Lancer la normalisation ? (yes/no) : ").strip().lower()
@@ -193,7 +225,8 @@ def run(store_config, store_path):
     log("Début normalisation Shopify")
 
     # Charge la map couleur une seule fois si des produits ont l'option "Couleur"
-    has_couleur = any(
+    # (sauté entièrement si la partie "couleurs" est décochée)
+    has_couleur = steps["couleurs"] and any(
         any(opt.get("name", "").strip().lower() == "couleur" for opt in p.get("options", []))
         for p in products
     )
@@ -243,7 +276,15 @@ def run(store_config, store_path):
         log(f"Normalisation — {handle}")
 
         try:
-            variant_results = normalize_product(product, base_url, headers, vendor, category_gid, None, color_map)
+            # Catégorie par produit : règle mot-clé si boutique thématique, sinon défaut
+            product_category_gid = category_gid
+            if category_rules:
+                rule = match_category_rule(product, category_rules)
+                if rule and rule.get("_gid"):
+                    product_category_gid = rule["_gid"]
+                    log(f"Catégorie par règle — {handle} | {rule.get('name')!r}")
+
+            variant_results = normalize_product(product, base_url, headers, vendor, product_category_gid, None, color_map, price_mode, steps)
             success_count += 1
             for vr in variant_results:
                 injection_log.append({**vr, "statut": "OK", "erreur": ""})

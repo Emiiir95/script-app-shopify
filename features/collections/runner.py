@@ -197,7 +197,7 @@ def run(store_config, store_path):
                 existing_col = find_collection_by_handle(handle, existing)
                 result = update_collection(
                     existing_col["id"], col_name, description, meta_title, meta_desc,
-                    base_url, headers
+                    base_url, headers, col.get("tags", [])
                 )
 
             if result:

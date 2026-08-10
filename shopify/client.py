@@ -131,6 +131,31 @@ def shopify_put(url, headers, payload, max_retries=5):
     raise Exception(f"Échec PUT après {max_retries} tentatives : {url}")
 
 
+def shopify_delete(url, headers, max_retries=5):
+    """DELETE avec retry + gestion du rate limit (429). Retourne True si supprimé."""
+    for attempt in range(max_retries):
+        try:
+            resp = requests.delete(url, headers=headers, timeout=30)
+            if resp.status_code == 429:
+                wait = int(float(resp.headers.get("Retry-After", 4)))
+                log(f"Rate limit Shopify DELETE — attente {wait}s (tentative {attempt+1})", "warning", also_print=True)
+                time.sleep(wait)
+                continue
+            if resp.status_code == 404:
+                return True                       # déjà absent → considéré supprimé
+            resp.raise_for_status()
+            _throttle(resp)
+            return True
+        except requests.exceptions.RequestException as e:
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                log(f"Erreur réseau DELETE ({e}) — retry dans {wait}s", "warning")
+                time.sleep(wait)
+            else:
+                raise
+    raise Exception(f"Échec DELETE après {max_retries} tentatives : {url}")
+
+
 def graphql_request(base_url, headers, query, variables=None, max_retries=5):
     store_url   = base_url.split("/admin/api/")[0]
     api_version = base_url.split("/admin/api/")[1]

@@ -36,6 +36,9 @@ STORES_DIR   = os.path.join(PROJECT_ROOT, "stores")
 STATIC_DIR   = os.path.join(BACKOFFICE, "static")
 LOG_FILE     = os.path.join(PROJECT_ROOT, "logs", "app.log")
 
+# Permet d'importer le module `shopify` du projet (fetch live des collections).
+sys.path.insert(0, PROJECT_ROOT)
+
 _CONTENT_TYPES = {
     ".html": "text/html; charset=utf-8",
     ".js":   "application/javascript; charset=utf-8",
@@ -156,6 +159,273 @@ def create_store(name, store_url, access_token):
     return folder
 
 
+def fetch_shopify_menu_resources(folder):
+    """
+    Récupère EN DIRECT collections + pages + blogs de la boutique Shopify (GraphQL),
+    pour peupler les listes déroulantes du constructeur de menus.
+
+    Retourne { collections: [...], pages: [...], blogs: [...] } où chaque item = {handle, title}.
+    Résilient : si un type échoue (scope manquant…), il renvoie [] sans casser les autres.
+    """
+    from shopify.client import shopify_headers, shopify_base_url, graphql_request, SHOPIFY_API_VERSION
+    cfg      = read_config(folder)
+    base_url = shopify_base_url(cfg["store_url"], SHOPIFY_API_VERSION)
+    headers  = shopify_headers(cfg["access_token"])
+
+    def paginate(root):
+        query = (
+            "query($cursor: String) { " + root + "(first: 250, after: $cursor) { "
+            "nodes { handle title } pageInfo { hasNextPage endCursor } } }"
+        )
+        out, cursor = [], None
+        while True:
+            data = graphql_request(base_url, headers, query, {"cursor": cursor})
+            node = data.get("data", {}).get(root, {})
+            for n in node.get("nodes", []):
+                out.append({"handle": n["handle"], "title": n.get("title", "")})
+            page = node.get("pageInfo", {})
+            if not page.get("hasNextPage"):
+                break
+            cursor = page["endCursor"]
+        out.sort(key=lambda c: (c["title"] or "").lower())
+        return out
+
+    def safe(root):
+        try:
+            return paginate(root)
+        except Exception:
+            return []
+
+    return {
+        "collections": safe("collections"),
+        "pages":       safe("pages"),
+        "blogs":       safe("blogs"),
+    }
+
+
+def _menu_item_to_config(item):
+    """
+    Convertit un MenuItem GraphQL Shopify au format attendu par l'éditeur de l'app.
+
+    Shopify référence les ressources par GID (resourceId), mais expose aussi une
+    `url` storefront (ex: "/collections/mon-handle") — on en extrait le handle,
+    ce qui évite toute résolution de GID. Récursif sur les sous-items (max 3 niveaux).
+    """
+    t   = (item.get("type") or "").upper()
+    url = item.get("url") or ""
+    tail = url.rstrip("/").split("/")[-1].split("?")[0] if url else ""
+
+    out = {"title": item.get("title", ""), "type": t}
+    if t in ("COLLECTION", "PAGE", "BLOG", "ARTICLE", "PRODUCT"):
+        out["handle"] = tail
+    elif t == "HTTP":
+        out["url"] = url
+    elif t == "SHOP_POLICY":
+        out["policy_type"] = tail.upper().replace("-", "_") if tail else ""
+    # FRONTPAGE / CATALOG / SEARCH : aucun champ ressource
+
+    children = item.get("items") or []
+    if children:
+        out["items"] = [_menu_item_to_config(c) for c in children]
+    return out
+
+
+def fetch_shopify_menus(folder):
+    """
+    Récupère la structure RÉELLE des menus de navigation de la boutique (GraphQL)
+    et la renvoie au format de l'éditeur de l'app : { menus: [ {title, handle, items:[...] } ] }.
+
+    Permet au bouton « Importer mes menus Shopify » de refléter dans l'app ce qui
+    existe réellement côté Shopify. Nécessite le scope read_online_store_navigation.
+    """
+    from shopify.client import shopify_headers, shopify_base_url, graphql_request, SHOPIFY_API_VERSION
+    cfg      = read_config(folder)
+    base_url = shopify_base_url(cfg["store_url"], SHOPIFY_API_VERSION)
+    headers  = shopify_headers(cfg["access_token"])
+
+    item = "title type url"
+    query = (
+        "{ menus(first: 50) { nodes { handle title items { " + item +
+        " items { " + item + " items { " + item + " } } } } } }"
+    )
+    data  = graphql_request(base_url, headers, query, {})
+    nodes = data.get("data", {}).get("menus", {}).get("nodes", []) or []
+
+    menus = []
+    for m in nodes:
+        menus.append({
+            "title":  m.get("title", ""),
+            "handle": m.get("handle", ""),
+            "items":  [_menu_item_to_config(it) for it in (m.get("items") or [])],
+        })
+    return {"menus": menus}
+
+
+def _load_openai_key():
+    """Lit OPENAI_API_KEY depuis le .env racine (partagé). '' si absent."""
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    if not os.path.isfile(env_path):
+        return ""
+    with open(env_path, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("OPENAI_API_KEY") and "=" in line:
+                return line.partition("=")[2].strip()
+    return ""
+
+
+def resolve_categories(folder, niches):
+    """
+    Bouton « Récupérer les catégories » : télécharge la taxonomie Shopify publique (FR),
+    et pour chaque niche choisit automatiquement la catégorie la plus proche (IA si une
+    clé OpenAI est dispo, sinon lexical). Générique : marche pour toute boutique.
+
+    Args:
+        folder : dossier de la boutique
+        niches : liste de niches (str). Si vide, retombe sur seo_boost.niches du config.
+
+    Returns:
+        dict { rules: [ {match, name, search, gid, fullName, found, via, niche} ], ai: bool }
+    """
+    from utils.taxonomy import load_taxonomy, suggest_categories
+
+    cfg = read_config(folder)
+    if not niches:
+        niches = (cfg.get("seo_boost", {}) or {}).get("niches", []) or []
+    niches = [n for n in (niches or []) if (n or "").strip()]
+    if not niches:
+        raise ValueError("Aucune niche fournie — ajoute tes niches (ou renseigne seo_boost.niches).")
+
+    openai_key = _load_openai_key()
+    entries    = load_taxonomy()
+    rules      = suggest_categories(niches, openai_key=openai_key, entries=entries)
+    return {"rules": rules, "ai": bool(openai_key)}
+
+
+def list_store_backups(folder):
+    """Liste les snapshots (retour en arrière) disponibles pour une boutique."""
+    from utils.backup import list_snapshots
+    store_path = _safe_store_path(folder)
+    return {"backups": list_snapshots(store_path)}
+
+
+def list_generated_features(folder):
+    """Indique quelles features ont déjà généré (archive présente) → pour l'ordre."""
+    from utils.archive import list_generated
+    store_path = _safe_store_path(folder)
+    feats = ["seo_boost", "fiche_produit", "reviews", "fond_studio"]
+    return {"generated": {f: bool(list_generated(store_path, f)) for f in feats}}
+
+
+def rollback_snapshot(folder, filename=None):
+    """
+    Restaure un snapshot produit dans Shopify (retour en arrière).
+    Réécrit les champs sauvegardés (title/handle/body_html…) via PUT, par ID produit.
+
+    Args:
+        folder   : dossier de la boutique
+        filename : nom du snapshot (défaut = le plus récent)
+
+    Returns:
+        dict { restored, failed, file, created_at, count }
+    """
+    from shopify.client import (
+        shopify_headers, shopify_base_url, shopify_put, SHOPIFY_API_VERSION,
+    )
+    from shopify.products import (
+        set_product_metafield, fetch_all_product_metafields, delete_product_metafield,
+    )
+    from utils.backup import load_snapshot, latest_snapshot_file
+
+    store_path = _safe_store_path(folder)
+    if not filename:
+        filename = latest_snapshot_file(store_path)
+    if not filename:
+        raise ValueError("Aucune sauvegarde disponible pour cette boutique.")
+
+    snap     = load_snapshot(store_path, filename)   # basename-safe côté util
+    fields   = [f for f in snap.get("fields", []) if f != "_metafields_backup"]
+    cfg      = read_config(folder)
+    base_url = shopify_base_url(cfg["store_url"], SHOPIFY_API_VERSION)
+    headers  = shopify_headers(cfg["access_token"])
+
+    restored, failed = 0, 0
+    for p in snap.get("products", []):
+        pid = p.get("id")
+        if not pid:
+            continue
+        # 1. Champs produit simples (title / handle / body_html)
+        payload = {"product": {"id": pid}}
+        for f in fields:
+            if f in p:
+                payload["product"][f] = p[f]
+        try:
+            shopify_put(f"{base_url}/products/{pid}.json", headers, payload)
+            restored += 1
+        except Exception:
+            failed += 1
+            continue
+
+        # 2. Metafields écrits par SEO Boost : restaure l'ancienne valeur, ou supprime
+        #    ceux qui n'existaient pas avant (value == None).
+        mf_backup = p.get("_metafields_backup") or []
+        if mf_backup:
+            try:
+                current = {
+                    (m.get("namespace"), m.get("key")): m
+                    for m in fetch_all_product_metafields(pid, base_url, headers)
+                }
+            except Exception:
+                current = {}
+            for entry in mf_backup:
+                ns, key   = entry.get("namespace"), entry.get("key")
+                old_value = entry.get("value")
+                try:
+                    if old_value is None:
+                        m = current.get((ns, key))
+                        if m and m.get("id"):
+                            delete_product_metafield(m["id"], base_url, headers)
+                    else:
+                        set_product_metafield(
+                            pid, ns, key, old_value,
+                            entry.get("type") or "single_line_text_field",
+                            base_url, headers,
+                        )
+                except Exception:
+                    pass
+
+    return {
+        "restored":   restored,
+        "failed":     failed,
+        "file":       os.path.basename(filename),
+        "created_at": snap.get("created_at"),
+        "count":      len(snap.get("products", [])),
+    }
+
+
+def rollback_feature(folder, feature):
+    """Retour en arrière Fiche Produit / Reviews : supprime les metafields écrits."""
+    from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
+    from features.reset.clearer import clear_feature_metafields
+    _safe_store_path(folder)                     # valide le dossier
+    cfg      = read_config(folder)
+    base_url = shopify_base_url(cfg["store_url"], SHOPIFY_API_VERSION)
+    headers  = shopify_headers(cfg["access_token"])
+    return clear_feature_metafields(feature, base_url, headers)
+
+
+def push_saved_data(folder, features=None):
+    """Repousse vers Shopify la data déjà générée (CSV d'aperçu), sans OpenAI."""
+    from shopify.client import shopify_headers, shopify_base_url, SHOPIFY_API_VERSION
+    from features.push_saved.pusher import push_all
+    store_path = _safe_store_path(folder)
+    cfg        = read_config(folder)
+    base_url   = shopify_base_url(cfg["store_url"], SHOPIFY_API_VERSION)
+    headers    = shopify_headers(cfg["access_token"])
+    feats      = tuple(features) if features else ("seo_boost", "reviews")
+    return push_all(store_path, base_url, headers, feats)
+
+
 def read_log_tail(n_lines=300):
     """Retourne les n dernières lignes de logs/app.log (lecture efficace de la fin)."""
     if not os.path.isfile(LOG_FILE):
@@ -265,6 +535,18 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     n = 300
                 self._send_json({"content": read_log_tail(n)})
+            elif path == "/api/shopify/menu-resources":
+                folder = (qs.get("store") or [""])[0]
+                self._send_json(fetch_shopify_menu_resources(folder))
+            elif path == "/api/shopify/menus":
+                folder = (qs.get("store") or [""])[0]
+                self._send_json(fetch_shopify_menus(folder))
+            elif path == "/api/backups":
+                folder = (qs.get("store") or [""])[0]
+                self._send_json(list_store_backups(folder))
+            elif path == "/api/generated":
+                folder = (qs.get("store") or [""])[0]
+                self._send_json(list_generated_features(folder))
             elif path.startswith("/api/"):
                 self._send_error("Endpoint inconnu", 404)
             else:
@@ -302,6 +584,18 @@ class Handler(BaseHTTPRequestHandler):
                 body    = self._read_body()
                 ok, msg = open_terminal(body.get("store"), body.get("feature"))
                 self._send_json({"ok": ok, "message": msg})
+            elif path == "/api/rollback":
+                body = self._read_body()
+                self._send_json(rollback_snapshot(body.get("store"), body.get("file")))
+            elif path == "/api/push-saved":
+                body = self._read_body()
+                self._send_json(push_saved_data(body.get("store"), body.get("features")))
+            elif path == "/api/rollback-feature":
+                body = self._read_body()
+                self._send_json(rollback_feature(body.get("store"), body.get("feature")))
+            elif path == "/api/shopify/resolve-categories":
+                body = self._read_body()
+                self._send_json(resolve_categories(body.get("store"), body.get("niches")))
             else:
                 self._send_error("Endpoint inconnu", 404)
         except Exception as e:

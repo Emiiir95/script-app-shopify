@@ -193,6 +193,32 @@ class TestClearProgress(unittest.TestCase):
         self.assertEqual(handles, [])
 
 
+class TestProgressPerFeature(unittest.TestCase):
+    """Chaque feature a son propre fichier de checkpoint → pas de collision en parallèle."""
+    def setUp(self):
+        self.tmpdir = tempfile.mkdtemp()
+
+    def test_separate_files_per_feature(self):
+        save_progress(self.tmpdir, 1, ["a"], feature="seo_boost")
+        save_progress(self.tmpdir, 2, ["b"], feature="fond_studio")
+        self.assertTrue(os.path.exists(os.path.join(self.tmpdir, "progress_seo_boost.json")))
+        self.assertTrue(os.path.exists(os.path.join(self.tmpdir, "progress_fond_studio.json")))
+
+    def test_features_do_not_see_each_other(self):
+        save_progress(self.tmpdir, 1, ["a"], feature="seo_boost")
+        save_progress(self.tmpdir, 9, ["b", "c"], feature="fond_studio")
+        idx_seo, h_seo = load_progress(self.tmpdir, feature="seo_boost")
+        self.assertEqual(idx_seo, 1)
+        self.assertEqual(h_seo, ["a"])                     # non pollué par fond_studio
+
+    def test_clear_one_feature_keeps_other(self):
+        save_progress(self.tmpdir, 1, ["a"], feature="seo_boost")
+        save_progress(self.tmpdir, 2, ["b"], feature="reviews")
+        clear_progress(self.tmpdir, feature="seo_boost")
+        self.assertEqual(load_progress(self.tmpdir, feature="seo_boost"), (-1, []))
+        self.assertEqual(load_progress(self.tmpdir, feature="reviews"), (2, ["b"]))
+
+
 # ── Logger ────────────────────────────────────────────────────────────────────
 
 class TestLogger(unittest.TestCase):

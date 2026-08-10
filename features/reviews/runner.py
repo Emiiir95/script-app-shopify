@@ -39,6 +39,8 @@ from utils.checkpoint import (
     save_progress, load_progress, clear_progress,
     save_generated_reviews, load_generated_reviews, clear_generated_reviews,
 )
+from utils.lock import StoreLock
+from utils.archive import save_generated
 
 
 REVIEWS_MODEL = "gpt-4o-mini"
@@ -118,7 +120,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     print("\n[INJ] Injection dans Shopify...")
     log("Début injection Shopify")
 
-    last_index, completed_handles = load_progress(store_path)
+    last_index, completed_handles = load_progress(store_path, "reviews")
     if last_index >= 0:
         print(f"[REPRISE] Checkpoint détecté — reprise depuis le produit {last_index + 1}")
 
@@ -126,6 +128,10 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     fail_count    = 0
     total_reviews = 0
     injection_log = []
+
+    # Verrou boutique : sérialise les écritures si plusieurs features tournent en parallèle.
+    store_lock = StoreLock(store_path, "reviews")
+    store_lock.acquire(wait_message="  ⏳ Une autre feature ({feature}) écrit sur Shopify — attente de son tour...")
 
     for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
         product = entry["product"]
@@ -149,7 +155,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
             success_count += 1
             total_reviews += len(entry["reviews"])
             completed_handles.append(handle)
-            save_progress(store_path, idx, completed_handles)
+            save_progress(store_path, idx, completed_handles, "reviews")
             log(f"SUCCÈS — {handle}")
             print(f"  ✓ {handle}")
             injection_log.append({"product": product, "entry": reviews_data, "statut": "OK"})
@@ -160,6 +166,8 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
             print(f"  ✗ {handle} — {e}")
             injection_log.append({"product": product, "entry": reviews_data, "statut": "ERREUR", "erreur": str(e)})
             continue
+
+    store_lock.release()
 
     # ── Rapport post-injection ──
     if injection_log:
@@ -179,7 +187,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     print("=" * 60)
 
     if fail_count == 0:
-        clear_progress(store_path)
+        clear_progress(store_path, "reviews")
         log("Progression effacée — tous les produits traités.")
 
     return fail_count == 0
@@ -232,7 +240,7 @@ def run(store_config, store_path):
 
         elif choice in ("n",):
             clear_generated_reviews(store_path)
-            clear_progress(store_path)
+            clear_progress(store_path, "reviews")
             print("[INFO] Cache effacé — reprise depuis le début.\n")
 
         else:
@@ -321,9 +329,14 @@ def run(store_config, store_path):
         log("Aucun avis généré — arrêt.", "error", also_print=True)
         sys.exit(1)
 
-    # ── Sauvegarde du cache de génération ─────────────────────────────────────
+    # ── Cache de génération (reprise) + archive permanente (re-poussable) ─────
     save_generated_reviews(store_path, all_products_data, store_config["store_url"])
     log(f"Cache de génération sauvegardé — {len(all_products_data)} produit(s)")
+    try:
+        arch = save_generated(store_path, "reviews", all_products_data, store_config["store_url"])
+        log(f"Archive Reviews (permanente) : {arch}")
+    except Exception as e:
+        log(f"Échec archive Reviews : {e}", "warning")
 
     # ── Phase d'injection ─────────────────────────────────────────────────────
     success = _injection_phase(

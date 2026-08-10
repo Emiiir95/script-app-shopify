@@ -43,8 +43,8 @@ MOTS-CLÉS SEO À INTÉGRER :
 
 ⚠️ HTML uniquement : <strong> pour le gras (JAMAIS **), <h2> pour titres (JAMAIS #), JAMAIS de <h1>
 
-COLLECTION : "{collection_name}"
-NICHE : "{niche_keyword}"
+COLLECTION (= MOT-CLÉ PRINCIPAL À UTILISER PARTOUT) : "{collection_name}"
+THÈME GÉNÉRAL DE LA BOUTIQUE (contexte seulement — NE JAMAIS forcer dans le texte, n'utilise QUE le titre de la collection ci-dessus) : "{niche_keyword}"
 MOTS-CLÉS CIBLÉS : "{tags_str}"
 {seo_block}
 OBJECTIF : Rédiger une fiche collection qui répond aux questions et besoins du client, l'aide à choisir, et le rassure sur sa décision d'achat. Ton factuel, bienveillant, centré sur le client.
@@ -67,7 +67,7 @@ STRUCTURE OBLIGATOIRE (8 H2, dans cet ordre) :
 
 <p>Introduction 2-3 phrases : présente la collection "{collection_name}", le bénéfice principal pour le client. Contient <strong>{collection_name}</strong>.</p>
 
-<h2>{niche_keyword} [angle sensoriel ou fonctionnel] : [accroche bénéfice client]</h2>
+<h2>{collection_name} [angle sensoriel ou fonctionnel] : [accroche bénéfice client]</h2>
 <p>Paragraphe 200+ mots. Répond à : pourquoi ce produit répond au besoin du client ? Utilise un vocabulaire évocateur (ex: sentinelle, gardienne, compagnon...). Ton narratif, pas de liste.</p>
 
 <h2>[variation long-tail] : [angle multifonction ou design]</h2>
@@ -98,7 +98,7 @@ STRUCTURE OBLIGATOIRE (8 H2, dans cet ordre) :
 
 RÈGLES FINALES :
 - MINIMUM 1000 mots au total
-- Chaque H2 titre = "{niche_keyword} [variante]" ou "[variante] {niche_keyword}" pour le SEO
+- Chaque H2 titre = "{collection_name} [variante]" ou "[variante] {collection_name}" pour le SEO (utilise le TITRE DE LA COLLECTION, jamais le thème général de la boutique)
 - Chaque H2 suit le format : mot-clé long-tail : sous-titre bénéfice client
 - Contenu 100% original, centré sur les besoins et questions du client
 
@@ -132,15 +132,15 @@ def build_collection_meta_title_prompt(collection_name, niche_keyword, tags, seo
 
     return f"""Générateur meta title SEO orienté CTR (taux de clic). Réponds UNIQUEMENT en JSON.
 
-COLLECTION : "{collection_name}"
-NICHE : "{niche_keyword}"
+COLLECTION (= MOT-CLÉ PRINCIPAL À UTILISER PARTOUT) : "{collection_name}"
+THÈME GÉNÉRAL DE LA BOUTIQUE (contexte seulement — NE JAMAIS forcer dans le texte, n'utilise QUE le titre de la collection ci-dessus) : "{niche_keyword}"
 MOTS-CLÉS CIBLÉS : "{tags_str}"
 {seo_keywords_block}
 OBJECTIF : Maximiser le taux de clic dans Google. L'utilisateur doit se dire "c'est exactement ce que je cherche".
 
 STRUCTURE OBLIGATOIRE :
-1. Commencer par "{niche_keyword}" + caractéristique principale de la collection
-2. Ajouter un attribut de valeur (ex: XXL, Design, Maine Coon, Plafond)
+1. Commencer par le titre exact de la collection "{collection_name}"
+2. Ajouter un attribut de valeur (ex: XXL, Design, Bois, Mural) si pertinent
 3. Naturel, percutant, orienté CTR Google
 
 RÈGLES :
@@ -183,14 +183,14 @@ def build_collection_meta_desc_prompt(collection_name, niche_keyword, tags, seo_
 
     return f"""Générateur meta description SEO orientée CTR (taux de clic). Réponds UNIQUEMENT en JSON.
 
-COLLECTION : "{collection_name}"
-NICHE : "{niche_keyword}"
+COLLECTION (= MOT-CLÉ PRINCIPAL À UTILISER PARTOUT) : "{collection_name}"
+THÈME GÉNÉRAL DE LA BOUTIQUE (contexte seulement — NE JAMAIS forcer dans le texte, n'utilise QUE le titre de la collection ci-dessus) : "{niche_keyword}"
 MOTS-CLÉS CIBLÉS : "{tags_str}"
 {seo_keywords_block}
 OBJECTIF : Maximiser le taux de clic dans Google. L'utilisateur doit se dire "c'est exactement ce que je cherche".
 
 STRUCTURE OBLIGATOIRE :
-1. Commencer par "{niche_keyword}" + caractéristique principale de la collection
+1. Commencer par le titre exact de la collection "{collection_name}"
 2. Ajouter un bénéfice concret (choix, sélection, variété, qualité)
 3. Terminer par un CTA (Découvrez, Explorez, Commandez)
 

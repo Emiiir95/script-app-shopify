@@ -18,6 +18,13 @@ from shopify.client import shopify_put
 from shopify.products import set_product_metafield
 from utils.logger import log
 
+# Metafields écrits par SEO Boost (namespace, key) — utilisés pour le snapshot/rollback.
+SEO_BOOST_METAFIELDS = [
+    ("global", "title_tag"),        # meta title
+    ("global", "description_tag"),  # meta description
+    ("custom", "caracteristique"),  # caractéristiques techniques
+]
+
 
 def generate_csv_preview(products_data, store_path):
     """

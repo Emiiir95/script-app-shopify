@@ -17,7 +17,6 @@ import os
 
 import requests
 
-from features.fond_studio.prompts import build_background_prompt
 from utils.logger import log
 
 IMAGE_MODEL = "gpt-image-1"
@@ -39,15 +38,22 @@ def _guess_name(url):
     return "produit" + ext
 
 
-def regenerate_on_background(image_bytes, source_url, color, client,
+def make_image_buffer(image_bytes, source_url):
+    """Construit un buffer nommé (BytesIO) prêt à être envoyé à OpenAI images.edit."""
+    buf = io.BytesIO(image_bytes)
+    buf.name = _guess_name(source_url)
+    return buf
+
+
+def regenerate_on_background(image_buffers, prompt, client,
                             size="1024x1024", output_format="png", quality="medium"):
     """
-    Régénère l'image du produit sur un fond de couleur unie via gpt-image-1.
+    Régénère l'image du produit selon le prompt fourni (fond couleur ou mise en scène).
 
     Args:
-        image_bytes   : bytes de la photo produit originale
-        source_url    : URL d'origine (sert juste à déduire le nom/extension)
-        color         : couleur du fond (nom ou hex)
+        image_buffers : liste de BytesIO nommés (>= 1). Une seule → édition simple ;
+                        plusieurs → toutes servent de référence (angles) pour + de fidélité.
+        prompt        : prompt d'édition déjà construit (voir prompts.py)
         client        : instance openai.OpenAI
         size          : "1024x1024" | "1536x1024" | "1024x1536" | "auto"
         output_format : "png" | "jpeg" | "webp" — format de l'image de sortie
@@ -56,18 +62,17 @@ def regenerate_on_background(image_bytes, source_url, color, client,
     Returns:
         bytes : nouvelle image au format demandé
     """
-    prompt = build_background_prompt(color)
-    buf = io.BytesIO(image_bytes)
-    buf.name = _guess_name(source_url)
+    # gpt-image-1 accepte un seul fichier OU une liste (références multiples)
+    image_arg = image_buffers if len(image_buffers) > 1 else image_buffers[0]
 
     resp = client.images.edit(
         model=IMAGE_MODEL,
-        image=buf,
+        image=image_arg,
         prompt=prompt,
         size=size,
         quality=quality,
         output_format=output_format,
     )
     b64 = resp.data[0].b64_json
-    log(f"Fond Studio — image régénérée (fond: {color!r}, {size}, {output_format})")
+    log(f"Fond Studio — image régénérée ({len(image_buffers)} réf, {size}, {output_format})")
     return base64.b64decode(b64)

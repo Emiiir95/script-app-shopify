@@ -47,9 +47,12 @@ from features.fiche_produit.injector import (
     inject_product_fiche,
 )
 from features.seo_boost.generator import strip_html
+from features.seo_boost.runner import resolve_supplier_description
 from utils.logger import log, LOG_FILE
 from utils.cost_tracker import CostTracker, estimate_cost
 from utils.checkpoint import save_progress, load_progress, clear_progress
+from utils.lock import StoreLock
+from utils.archive import save_generated
 from utils.product_filter import ask_product_status
 
 # ── Modèles et constantes ──────────────────────────────────────────────────────
@@ -143,7 +146,7 @@ def _load_reassurance(store_path):
     return content
 
 
-def _generation_phase(products, fiche_cfg, reassurance_points, openai_client, cost_tracker_main, cost_tracker_mini):
+def _generation_phase(products, fiche_cfg, reassurance_points, openai_client, cost_tracker_main, cost_tracker_mini, base_url, headers):
     """
     Génère phrase, benefices, specs, titres, descriptions pour chaque produit.
 
@@ -157,7 +160,9 @@ def _generation_phase(products, fiche_cfg, reassurance_points, openai_client, co
     for product in tqdm(products, desc="Génération Fiche Produit"):
         handle               = product.get("handle", "")
         product_keyword      = product.get("title", handle)
-        supplier_description = strip_html(product.get("body_html", ""))
+        # Source = description fournisseur préservée (metafield), pas le body_html
+        # potentiellement déjà écrasé par SEO Boost.
+        supplier_description = resolve_supplier_description(product, base_url, headers)
 
         log(f"Fiche Produit — {handle!r} | titre: {product_keyword!r}")
 
@@ -217,13 +222,17 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     print("\n[INJ] Injection dans Shopify...")
     log("Début injection Fiche Produit")
 
-    last_index, completed_handles = load_progress(store_path)
+    last_index, completed_handles = load_progress(store_path, "fiche_produit")
     if last_index >= 0:
         print(f"[REPRISE] Checkpoint détecté — reprise depuis le produit {last_index + 1}")
 
     success_count = 0
     fail_count    = 0
     injection_log = []
+
+    # Verrou boutique : sérialise les écritures si plusieurs features tournent en parallèle.
+    store_lock = StoreLock(store_path, "fiche_produit")
+    store_lock.acquire(wait_message="  ⏳ Une autre feature ({feature}) écrit sur Shopify — attente de son tour...")
 
     for idx, entry in enumerate(tqdm(all_products_data, desc="Produits injectés")):
         product = entry["product"]
@@ -241,7 +250,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
             inject_product_fiche(product, content, base_url, headers)
             success_count += 1
             completed_handles.append(handle)
-            save_progress(store_path, idx, completed_handles)
+            save_progress(store_path, idx, completed_handles, "fiche_produit")
             log(f"SUCCÈS — {handle}")
             print(f"  ✓ {handle}")
             injection_log.append({"product": product, "content": content, "statut": "OK"})
@@ -252,6 +261,8 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
             print(f"  ✗ {handle} — {e}")
             injection_log.append({"product": product, "content": content, "statut": "ERREUR", "erreur": str(e)})
             continue
+
+    store_lock.release()
 
     # Rapport post-injection
     if injection_log:
@@ -278,7 +289,7 @@ def _injection_phase(all_products_data, store_path, base_url, headers, store_nam
     print("=" * 60)
 
     if fail_count == 0:
-        clear_progress(store_path)
+        clear_progress(store_path, "fiche_produit")
         log("Progression effacée — tous les produits Fiche Produit traités.")
 
     return fail_count == 0
@@ -355,7 +366,7 @@ def run(store_config, store_path):
 
         elif choice == "n":
             _clear_cache(store_path)
-            clear_progress(store_path)
+            clear_progress(store_path, "fiche_produit")
             print("[INFO] Cache effacé — reprise depuis le début.\n")
         else:
             print("[ANNULÉ]")
@@ -401,7 +412,7 @@ def run(store_config, store_path):
     # ── Génération OpenAI ─────────────────────────────────────────────────────
     print("\n[4/4] Génération Fiche Produit via OpenAI...")
     all_products_data = _generation_phase(
-        products, fiche_cfg, reassurance_points, openai_client, cost_tracker_main, cost_tracker_mini
+        products, fiche_cfg, reassurance_points, openai_client, cost_tracker_main, cost_tracker_mini, base_url, headers
     )
 
     cost_total = cost_tracker_main.cost_usd + cost_tracker_mini.cost_usd
@@ -413,8 +424,13 @@ def run(store_config, store_path):
         log("Aucune donnée générée — arrêt.", "error", also_print=True)
         sys.exit(1)
 
-    # ── Cache ─────────────────────────────────────────────────────────────────
+    # ── Cache (reprise) + archive permanente (re-poussable, descriptions complètes) ──
     _save_cache(store_path, all_products_data)
+    try:
+        arch = save_generated(store_path, "fiche_produit", all_products_data, store_config.get("store_url", ""))
+        log(f"Archive Fiche Produit (permanente) : {arch}")
+    except Exception as e:
+        log(f"Échec archive Fiche Produit : {e}", "warning")
 
     # ── Injection ─────────────────────────────────────────────────────────────
     success = _injection_phase(

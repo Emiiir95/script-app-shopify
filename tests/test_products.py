@@ -10,6 +10,8 @@ from unittest.mock import patch, MagicMock
 from shopify.products import (
     fetch_all_products,
     fetch_product_metafields,
+    fetch_all_product_metafields,
+    delete_product_metafield,
     missing_review_slots,
     set_product_metafield,
 )
@@ -96,6 +98,33 @@ class TestFetchProductMetafields(unittest.TestCase):
         }
         result = fetch_product_metafields(1, "http://base", {})
         self.assertEqual(len(result), 3)
+
+
+class TestFetchAllProductMetafields(unittest.TestCase):
+    @patch("shopify.products.shopify_get")
+    def test_returns_all_namespaces(self, mock_get):
+        mock_get.return_value = {"metafields": [
+            {"id": 1, "namespace": "custom", "key": "caracteristique", "value": "x", "type": "multi_line_text_field"},
+            {"id": 2, "namespace": "global", "key": "title_tag", "value": "T", "type": "single_line_text_field"},
+        ]}
+        result = fetch_all_product_metafields(123, "http://base", {})
+        self.assertEqual(len(result), 2)
+        self.assertEqual({m["namespace"] for m in result}, {"custom", "global"})
+
+    @patch("shopify.products.shopify_get")
+    def test_empty(self, mock_get):
+        mock_get.return_value = {"metafields": []}
+        self.assertEqual(fetch_all_product_metafields(1, "http://base", {}), [])
+
+
+class TestDeleteProductMetafield(unittest.TestCase):
+    @patch("shopify.products.shopify_delete")
+    def test_calls_delete_with_metafield_url(self, mock_del):
+        mock_del.return_value = True
+        ok = delete_product_metafield(555, "http://base", {})
+        self.assertTrue(ok)
+        called_url = mock_del.call_args.args[0]
+        self.assertIn("/metafields/555.json", called_url)
 
 
 class TestMissingReviewSlots(unittest.TestCase):

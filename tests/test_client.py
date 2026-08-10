@@ -13,6 +13,7 @@ from shopify.client import (
     SHOPIFY_API_VERSION,
     graphql_request,
     shopify_base_url,
+    shopify_delete,
     shopify_get,
     shopify_get_paginated,
     shopify_headers,
@@ -215,6 +216,29 @@ class TestShopifyPut(unittest.TestCase):
         mock_put.side_effect = [rate_limited, success]
         shopify_put("http://example.com", {}, {})
         mock_sleep.assert_called_with(1)
+
+
+class TestShopifyDelete(unittest.TestCase):
+    @patch("shopify.client.requests.delete")
+    def test_success_returns_true(self, mock_del):
+        resp = MagicMock(); resp.status_code = 200
+        mock_del.return_value = resp
+        self.assertTrue(shopify_delete("http://example.com/x.json", {}))
+
+    @patch("shopify.client.requests.delete")
+    def test_404_treated_as_deleted(self, mock_del):
+        resp = MagicMock(); resp.status_code = 404
+        mock_del.return_value = resp
+        self.assertTrue(shopify_delete("http://example.com/x.json", {}))
+
+    @patch("shopify.client.time.sleep")
+    @patch("shopify.client.requests.delete")
+    def test_rate_limit_retries(self, mock_del, mock_sleep):
+        rl = MagicMock(); rl.status_code = 429; rl.headers = {"Retry-After": "2.0"}
+        ok = MagicMock(); ok.status_code = 200
+        mock_del.side_effect = [rl, ok]
+        self.assertTrue(shopify_delete("http://example.com/x.json", {}))
+        mock_sleep.assert_called_with(2)   # parse float "2.0" → 2
 
 
 class TestGraphqlRequest(unittest.TestCase):

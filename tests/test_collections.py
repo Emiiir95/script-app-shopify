@@ -28,9 +28,12 @@ from features.collections.injector import (
     get_handle_from_url,
     find_collection_by_handle,
     fetch_existing_collections,
+    build_tag_rules,
     create_collection,
     update_collection,
     generate_injection_report,
+    _http_error_detail,
+    _is_handle_taken,
 )
 
 
@@ -360,6 +363,54 @@ COL_CONFIG = {
 }
 
 
+class TestBuildTagRules(unittest.TestCase):
+
+    def test_name_is_first_rule(self):
+        rules = build_tag_rules("Arbre à Chat XXL", [])
+        self.assertEqual(rules[0], {"column": "tag", "relation": "equals", "condition": "Arbre à Chat XXL"})
+
+    def test_name_plus_config_tags(self):
+        conds = [r["condition"] for r in build_tag_rules("Col", ["tag-a", "tag-b"])]
+        self.assertEqual(conds, ["Col", "tag-a", "tag-b"])
+
+    def test_dedup_case_insensitive(self):
+        conds = [r["condition"] for r in build_tag_rules("Col", ["col", "autre"])]
+        self.assertEqual(conds, ["Col", "autre"])
+
+    def test_ignores_empty(self):
+        conds = [r["condition"] for r in build_tag_rules("Col", ["", "  ", None])]
+        self.assertEqual(conds, ["Col"])
+
+    def test_all_rules_are_tag_equals(self):
+        for r in build_tag_rules("Col", ["x"]):
+            self.assertEqual(r["column"], "tag")
+            self.assertEqual(r["relation"], "equals")
+
+
+class TestCollectionRulesInjection(unittest.TestCase):
+
+    @patch("features.collections.injector.shopify_post")
+    @patch("features.collections.injector.shopify_get")
+    def test_create_rules_include_collection_name(self, mock_get, mock_post):
+        mock_post.return_value = {"smart_collection": {"id": 42}}
+        mock_get.return_value  = {"metafields": []}
+        create_collection(COL_CONFIG, "<p>d</p>", "T", "D", BASE_URL, HEADERS)
+        payload = mock_post.call_args_list[0].args[2]["smart_collection"]
+        conds = [r["condition"] for r in payload["rules"]]
+        self.assertIn("Arbre à Chat XXL", conds)   # le nom de la collection = tag
+        self.assertTrue(payload["disjunctive"])
+
+    @patch("features.collections.injector.shopify_get")
+    @patch("features.collections.injector.shopify_put")
+    def test_update_rules_include_collection_name(self, mock_put, mock_get):
+        mock_put.return_value = {"smart_collection": {"id": 7}}
+        mock_get.return_value = {"metafields": []}
+        update_collection(7, "Ma Collection", "<p>d</p>", "T", "D", BASE_URL, HEADERS, ["tag-x"])
+        payload = mock_put.call_args.args[2]["smart_collection"]
+        conds = [r["condition"] for r in payload["rules"]]
+        self.assertEqual(conds, ["Ma Collection", "tag-x"])
+
+
 class TestCreateCollection(unittest.TestCase):
 
     @patch("features.collections.injector.shopify_post")
@@ -550,6 +601,59 @@ class TestGenerateInjectionReport(unittest.TestCase):
             with open(path, encoding="utf-8-sig") as f:
                 rows = list(csv.DictReader(f))
         self.assertEqual(len(rows), 0)
+
+
+# ── _http_error_detail / _is_handle_taken ────────────────────────────────────
+
+class TestHttpErrorDetail(unittest.TestCase):
+
+    def _err(self, json_body=None, text=None, raises=False):
+        exc = Exception("422 Client Error")
+        resp = MagicMock()
+        if raises:
+            resp.json.side_effect = ValueError("no json")
+        else:
+            resp.json.return_value = json_body
+        resp.text = text or ""
+        exc.response = resp
+        return exc
+
+    def test_no_response_returns_empty(self):
+        self.assertEqual(_http_error_detail(Exception("boom")), "")
+
+    def test_extracts_errors_dict(self):
+        exc = self._err(json_body={"errors": {"handle": ["has already been taken"]}})
+        self.assertIn("has already been taken", _http_error_detail(exc))
+
+    def test_falls_back_to_text_when_not_json(self):
+        exc = self._err(text="Unprocessable Entity body", raises=True)
+        self.assertEqual(_http_error_detail(exc), "Unprocessable Entity body")
+
+
+class TestIsHandleTaken(unittest.TestCase):
+
+    def test_true_on_handle_taken(self):
+        self.assertTrue(_is_handle_taken("{'handle': ['has already been taken']}"))
+
+    def test_false_on_other_error(self):
+        self.assertFalse(_is_handle_taken("{'rules': ['is invalid']}"))
+
+    def test_false_on_empty(self):
+        self.assertFalse(_is_handle_taken(""))
+
+
+class TestCreateCollectionHandleTaken(unittest.TestCase):
+
+    @patch("features.collections.injector.shopify_post")
+    def test_handle_taken_returns_none_without_crash(self, mock_post):
+        exc = Exception("422 Client Error")
+        resp = MagicMock()
+        resp.json.return_value = {"errors": {"handle": ["has already been taken"]}}
+        exc.response = resp
+        mock_post.side_effect = exc
+
+        result = create_collection(COL_CONFIG, "<p>d</p>", "T", "D", BASE_URL, HEADERS)
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":
