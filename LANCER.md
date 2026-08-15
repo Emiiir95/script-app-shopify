@@ -1,9 +1,19 @@
 # Comment lancer
 
+> 🆕 **Première utilisation, ou pas à l'aise avec le Terminal ?**
+> Lis **[INSTALLATION.md](INSTALLATION.md)** — il suffit de double-cliquer
+> `Lancer.command`, tout le reste est automatique.
+
+Les commandes ci-dessous sont la version manuelle, pour ceux qui préfèrent le
+Terminal. Toutes se lancent **depuis la racine du projet** (le dossier qui
+contient `main.py`).
+
+---
+
 ## 1. Une seule fois — installer les dépendances
 
 ```bash
-pip install requests openai tqdm
+pip3 install -r requirements.txt
 ```
 
 ---
@@ -11,8 +21,7 @@ pip install requests openai tqdm
 ## 2. Le Backoffice (interface web pour tout configurer)
 
 ```bash
-cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé/backoffice"
-python3 server.py
+python3 backoffice/server.py
 ```
 
 Puis ouvre **http://localhost:4747** dans ton navigateur.
@@ -30,20 +39,26 @@ Pour l'arrêter : `Ctrl+C` dans le Terminal.
 ## 3. Le programme (pour lancer une fonctionnalité)
 
 ```bash
-cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé"
 python3 main.py
 ```
 
 1. Choisis la **boutique**.
-2. Choisis la **fonctionnalité** (0 à 10).
+2. Choisis la **fonctionnalité** (0 à 11).
 3. Réponds aux questions (souvent `yes` pour valider).
 
 Pour quitter : tape `q`.
+
+Mode direct, sans passer par le menu :
+
+```bash
+python3 main.py --store <dossier-boutique> --feature <numéro>
+```
 
 ---
 
 ## En cas de souci
 
 - **Le style ne s'affiche pas / rien ne change** → recharge la page avec `Cmd+Shift+R`.
-- **`command not found: python3`** → essaie `python` à la place.
+- **`command not found: python3`** → essaie `python` à la place, ou installe Python
+  depuis https://www.python.org/downloads/
 - Les logs de tout ce qui tourne sont dans `logs/app.log`.
