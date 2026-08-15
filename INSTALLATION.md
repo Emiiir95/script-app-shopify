@@ -4,6 +4,10 @@ Ce guide s'adresse à quelqu'un qui **n'est pas développeur**. Aucun outil
 particulier n'est nécessaire : ni VSCode, ni Git, ni ligne de commande.
 Compte 10 minutes la première fois.
 
+> 🤖 **Tu préfères ne rien faire toi-même ?** Si tu as Claude Code, ouvre
+> **[POUR-CLAUDE.md](POUR-CLAUDE.md)** : il contient des phrases à copier-coller
+> pour que Claude installe, configure et lance tout à ta place.
+
 ---
 
 ## Étape 1 — Installer Python (une seule fois)
