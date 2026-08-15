@@ -8,14 +8,34 @@ pip install requests openai tqdm
 
 ---
 
-## 2. Le Backoffice (interface web pour tout configurer)
+## 2. Lancer depuis la RACINE du projet (le plus simple)
+
+Deux fichiers **double-cliquables** sont à la racine du projet. Double-clique-les
+dans le Finder (ils démarrent le serveur **et ouvrent le navigateur tout seuls**),
+ou lance-les depuis le terminal placé à la racine du projet :
 
 ```bash
-cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé/backoffice"
-python3 server.py
+./backoffice.command   # Backoffice — éditeur de config web  → http://localhost:4747
+./front.command        # Front — maquettes statiques         → http://localhost:8080
 ```
 
-Puis ouvre **http://localhost:4747** dans ton navigateur.
+> ⚠️ **Backoffice = l'interface fonctionnelle** (règle tes boutiques, menus, SEO…).
+> **Front = des maquettes statiques** (Dashboard + Store Manager, sans données réelles).
+
+Équivalent en commande brute (sans les scripts), toujours **depuis la racine** :
+
+```bash
+python3 backoffice/server.py                     # Backoffice (port 4747)
+python3 -m http.server 8080 --directory front    # Front      (port 8080)
+```
+
+Pour arrêter l'un ou l'autre : `Ctrl+C` dans la fenêtre (ou ferme-la).
+
+---
+
+## 3. Le Backoffice en détail (interface web pour tout configurer)
+
+Ouvre **http://localhost:4747** dans ton navigateur.
 
 - Tu y règles tes boutiques et toutes les fonctionnalités.
 - Sur une fonctionnalité, le bouton **« Lancer cette fonctionnalité »** ouvre un Terminal
@@ -27,10 +47,11 @@ Pour l'arrêter : `Ctrl+C` dans le Terminal.
 
 ---
 
-## 3. Le programme (pour lancer une fonctionnalité)
+## 4. Le programme en ligne de commande (pour lancer une fonctionnalité)
+
+Depuis la **racine du projet** :
 
 ```bash
-cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé"
 python3 main.py
 ```
 
