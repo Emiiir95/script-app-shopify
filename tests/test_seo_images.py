@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch, call
 from features.seo_images.injector import (
     slugify_title,
     _get_extension,
+    _filename_from_url,
+    build_image_updates,
     update_images_seo,
     generate_injection_report,
 )
@@ -88,6 +90,84 @@ class TestGetExtension(unittest.TestCase):
 
     def test_uppercase_lowercased(self):
         self.assertEqual(_get_extension("https://cdn.shopify.com/s/files/1/image.JPG"), ".jpg")
+
+
+# ── _filename_from_url ─────────────────────────────────────────────────────────
+
+class TestFilenameFromUrl(unittest.TestCase):
+
+    def test_extracts_basename_without_query(self):
+        url = "https://cdn.shopify.com/s/files/1/x/products/armoire-1.jpg?v=123"
+        self.assertEqual(_filename_from_url(url), "armoire-1.jpg")
+
+    def test_lowercased(self):
+        self.assertEqual(_filename_from_url("https://cdn/x/IMG_01.JPG"), "img_01.jpg")
+
+    def test_empty_url(self):
+        self.assertEqual(_filename_from_url(""), "")
+
+
+# ── build_image_updates ────────────────────────────────────────────────────────
+
+class TestBuildImageUpdates(unittest.TestCase):
+
+    def _prod(self, handle, meta, urls):
+        return {
+            "handle": handle, "meta_title": meta,
+            "images": [{"gid": f"gid://{handle}/{i}", "url": u} for i, u in enumerate(urls, 1)],
+        }
+
+    def test_filename_based_on_handle(self):
+        prods   = [self._prod("mon-armoire", "Meta Title", ["https://cdn/x/orig.jpg"])]
+        updates = build_image_updates(prods)
+        self.assertEqual(updates[0]["filename"], "mon-armoire-1.jpg")
+        self.assertEqual(updates[0]["alt"], "Meta Title")
+
+    def test_same_meta_title_different_handles_stay_unique(self):
+        # Le bug d'origine : 2 produits, même meta title → collision de noms.
+        prods = [
+            self._prod("armoire-a", "Armoire Miroir LED", ["https://cdn/x/a.jpg"]),
+            self._prod("armoire-b", "Armoire Miroir LED", ["https://cdn/x/b.jpg"]),
+        ]
+        updates = build_image_updates(prods)
+        names   = [u["filename"] for u in updates]
+        self.assertEqual(len(names), len(set(names)))   # tous uniques
+        self.assertIn("armoire-a-1.jpg", names)
+        self.assertIn("armoire-b-1.jpg", names)
+
+    def test_already_correct_image_is_skipped(self):
+        # Idempotence : image déjà nommée handle-1.jpg → aucune mise à jour.
+        prods = [self._prod("mon-armoire", "Meta",
+                            ["https://cdn/x/mon-armoire-1.jpg?v=9"])]
+        updates = build_image_updates(prods)
+        self.assertEqual(updates, [])
+
+    def test_partial_rerun_only_updates_wrong_ones(self):
+        prods = [self._prod("armoire", "Meta", [
+            "https://cdn/x/armoire-1.jpg?v=1",   # déjà bon → skip
+            "https://cdn/x/vieux-nom.jpg",       # à renommer → armoire-2.jpg
+        ])]
+        updates = build_image_updates(prods)
+        self.assertEqual(len(updates), 1)
+        self.assertEqual(updates[0]["filename"], "armoire-2.jpg")
+
+    def test_does_not_steal_name_held_by_another_image(self):
+        # img de produit B porte déjà 'armoire-a-1.jpg' → produit A ne doit pas
+        # écraser ce nom ; il prend une variante.
+        prods = [
+            self._prod("armoire-a", "M", ["https://cdn/x/orig-a.jpg"]),
+            self._prod("armoire-b", "M", ["https://cdn/x/armoire-a-1.jpg"]),
+        ]
+        updates = build_image_updates(prods)
+        a_update = [u for u in updates if u["handle"] == "armoire-a"][0]
+        self.assertNotEqual(a_update["filename"], "armoire-a-1.jpg")
+
+    def test_positions_increment_within_product(self):
+        prods   = [self._prod("armoire", "M",
+                             ["https://cdn/x/o1.jpg", "https://cdn/x/o2.jpg"])]
+        updates = build_image_updates(prods)
+        self.assertEqual([u["filename"] for u in updates],
+                         ["armoire-1.jpg", "armoire-2.jpg"])
 
 
 # ── update_images_seo ─────────────────────────────────────────────────────────

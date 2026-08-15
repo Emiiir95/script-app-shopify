@@ -54,6 +54,24 @@
     "product_category_search": null
   },
 
+  "menus": [
+    {
+      "_NOTE": "Menu de pied de page — liens légaux. Lancer Politiques (8) AVANT pour que les politiques existent.",
+      "title": "Informations",
+      "handle": "footer",
+      "items": [
+        { "title": "Coordonnées",                  "type": "SHOP_POLICY", "policy_type": "CONTACT_INFORMATION" },
+        { "title": "Mentions légales",              "type": "SHOP_POLICY", "policy_type": "LEGAL_NOTICE" },
+        { "title": "Politique de retour",           "type": "PAGE",        "handle": "return-policy" },
+        { "title": "Politique de livraison",        "type": "SHOP_POLICY", "policy_type": "SHIPPING_POLICY" },
+        { "title": "Politique de confidentialité",  "type": "SHOP_POLICY", "policy_type": "PRIVACY_POLICY" },
+        { "title": "Politique de remboursement",    "type": "SHOP_POLICY", "policy_type": "REFUND_POLICY" },
+        { "title": "Conditions générales de vente", "type": "SHOP_POLICY", "policy_type": "TERMS_OF_SALE" },
+        { "title": "Conditions d'utilisation",      "type": "SHOP_POLICY", "policy_type": "TERMS_OF_SERVICE" }
+      ]
+    }
+  ],
+
   "legal_info": {
     "_NOTE": "Utilisé par la feature Politiques — rempli une seule fois par boutique",
 

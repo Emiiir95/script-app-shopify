@@ -131,6 +131,14 @@ class TestBuildItems(unittest.TestCase):
 
         self.assertEqual(items[0]["resourceId"], POLICY_MAP["REFUND_POLICY"])
 
+    def test_policy_prefix_type_resolves_gid(self):
+        # Tolérance : ancien format backoffice "POLICY:<TYPE>" → SHOP_POLICY
+        cfg   = [{"title": "Remboursement", "type": "POLICY:REFUND_POLICY"}]
+        items = _build_items(cfg, COLLECTION_MAP, PAGE_MAP, BLOG_MAP, POLICY_MAP)
+
+        self.assertEqual(items[0]["type"], "SHOP_POLICY")
+        self.assertEqual(items[0]["resourceId"], POLICY_MAP["REFUND_POLICY"])
+
     def test_unknown_handle_is_skipped(self):
         cfg   = [{"title": "X", "type": "collection", "handle": "inexistant"}]
         items = _build_items(cfg, COLLECTION_MAP, PAGE_MAP, BLOG_MAP, POLICY_MAP)

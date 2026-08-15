@@ -48,6 +48,88 @@ def _get_extension(image_url):
     return ext if ext in (".jpg", ".jpeg", ".png", ".webp", ".gif") else ".jpg"
 
 
+def _filename_from_url(image_url):
+    """
+    Nom de fichier actuel depuis l'URL CDN Shopify (sans le ?v=...).
+    Ex: ".../products/armoire-a-bijoux-1.jpg?v=123" → "armoire-a-bijoux-1.jpg"
+    """
+    path = (image_url or "").split("?")[0]
+    return os.path.basename(path).lower()
+
+
+def build_image_updates(products):
+    """
+    Construit la liste des mises à jour d'images avec des noms de fichiers
+    GARANTIS UNIQUES sur toute la boutique et de façon IDEMPOTENTE (relançable).
+
+    Pourquoi : les noms de fichiers Shopify sont uniques à l'échelle de TOUTE
+    la boutique (section Fichiers), pas par produit. Un nom basé sur le meta
+    title provoque des collisions quand plusieurs produits ont un titre proche
+    (→ "The filename provided already exists"). On base donc le nom sur le
+    **handle** du produit (unique par produit chez Shopify) et on ajoute deux
+    filets :
+      1. Unicité globale : jamais deux images ne visent le même nom, et on évite
+         un nom déjà porté par une AUTRE image de la boutique.
+      2. Idempotence : une image qui porte déjà le nom cible est ignorée
+         (aucun appel fileUpdate → plus d'erreur "already exists" au 2e run).
+
+    Args:
+        products : liste de dicts { handle, meta_title, images: [{gid, url}, ...] }
+
+    Returns:
+        list de dicts {gid, filename, alt, handle, position} — uniquement les
+        images à réellement renommer (les déjà-correctes sont omises).
+    """
+    # Noms de fichiers actuels de TOUTES les images (pour ne pas voler le nom
+    # d'une autre image). On mémorise aussi le nom courant par gid pour l'exclure.
+    current_by_gid = {}
+    all_current    = set()
+    for product in products:
+        for img in product.get("images", []):
+            cur = _filename_from_url(img.get("url", ""))
+            current_by_gid[img["gid"]] = cur
+            if cur:
+                all_current.add(cur)
+
+    updates = []
+    used    = set()   # noms attribués pendant CE run
+
+    for product in products:
+        handle = product["handle"]
+        alt    = product["meta_title"]
+        base   = slugify_title(handle) or slugify_title(alt) or "image"
+
+        for pos, img in enumerate(product.get("images", []), start=1):
+            ext     = _get_extension(img["url"])
+            current = current_by_gid.get(img["gid"], "")
+            target  = f"{base}-{pos}{ext}"
+
+            # Un nom est "pris" s'il est déjà attribué ce run, ou porté par une
+            # AUTRE image de la boutique (≠ le nom courant de cette image-ci).
+            def _taken(name):
+                return name in used or (name in all_current and name != current)
+
+            n = 2
+            while _taken(target):
+                target = f"{base}-{pos}-{n}{ext}"
+                n += 1
+
+            used.add(target)
+
+            if target == current:
+                continue   # déjà correctement nommée → rien à faire (idempotent)
+
+            updates.append({
+                "gid":      img["gid"],
+                "filename": target,
+                "alt":      alt,
+                "handle":   handle,
+                "position": pos,
+            })
+
+    return updates
+
+
 def update_images_seo(image_updates, base_url, headers, max_retries=3):
     """
     Met à jour filename + alt text de plusieurs images via fileUpdate GraphQL.

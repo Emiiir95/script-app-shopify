@@ -176,6 +176,15 @@ def _build_items(items_cfg, collection_map, page_map, blog_map, policy_map, dept
         title     = item.get("title", "")
         sub_items = item.get("items", [])
 
+        # Tolérance : le backoffice encode les pages légales "POLICY:<TYPE>" dans
+        # son select. Normalement reconverti en SHOP_POLICY + policy_type à la
+        # sauvegarde, mais si une config a été enregistrée avec le préfixe, on le
+        # décode ici pour ne pas ignorer l'item.
+        policy_override = None
+        if item_type.startswith("POLICY:"):
+            policy_override = item_type.split(":", 1)[1]
+            item_type       = "SHOP_POLICY"
+
         built = {"title": title, "type": item_type}
 
         if item_type in ("FRONTPAGE", "CATALOG"):
@@ -206,7 +215,7 @@ def _build_items(items_cfg, collection_map, page_map, blog_map, policy_map, dept
             built["resourceId"] = gid
 
         elif item_type == "SHOP_POLICY":
-            policy_type = item.get("policy_type", "")
+            policy_type = policy_override or item.get("policy_type", "")
             gid         = policy_map.get(policy_type)
             if not gid:
                 log(f"Menu — politique introuvable : {policy_type!r} (politique non créée ?)", "warning", also_print=True)

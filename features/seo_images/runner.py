@@ -23,8 +23,7 @@ from tqdm import tqdm
 
 from shopify.client import shopify_headers, shopify_base_url, graphql_request, SHOPIFY_API_VERSION
 from features.seo_images.injector import (
-    slugify_title,
-    _get_extension,
+    build_image_updates,
     update_images_seo,
     generate_injection_report,
 )
@@ -110,34 +109,6 @@ def _fetch_products_with_seo_images(base_url, headers, status=None):
     return products
 
 
-def _build_image_updates(products):
-    """
-    Construit la liste complète des mises à jour d'images.
-
-    Returns:
-        list de dicts {gid, filename, alt, handle, position}
-    """
-    updates = []
-    for product in products:
-        handle     = product["handle"]
-        meta_title = product["meta_title"]
-        slug       = slugify_title(meta_title)
-        alt        = meta_title
-
-        for pos, img in enumerate(product["images"], start=1):
-            ext      = _get_extension(img["url"])
-            filename = f"{slug}-{pos}{ext}"
-            updates.append({
-                "gid":      img["gid"],
-                "filename": filename,
-                "alt":      alt,
-                "handle":   handle,
-                "position": pos,
-            })
-
-    return updates
-
-
 def run(store_config, store_path):
     """
     Point d'entrée de la feature SEO Images.
@@ -167,8 +138,10 @@ def run(store_config, store_path):
         log("Aucun produit trouvé — arrêt.", "error", also_print=True)
         sys.exit(1)
 
-    image_updates = _build_image_updates(products)
+    image_updates = build_image_updates(products)
     total_images  = len(image_updates)
+    total_all_images = sum(len(p["images"]) for p in products)
+    already_ok    = total_all_images - total_images
     total_products_with_images = sum(1 for p in products if p["images"])
 
     # ── Résumé + confirmation ──────────────────────────────────────────────────
@@ -177,13 +150,19 @@ def run(store_config, store_path):
     print("─" * 50)
     print(f"  Produits            : {len(products)}")
     print(f"  Produits avec images: {total_products_with_images}")
-    print(f"  Images à traiter    : {total_images}")
+    print(f"  Images à renommer   : {total_images}")
+    print(f"  Déjà correctes      : {already_ok} (ignorées)")
     print("─" * 50)
     print("\n  Règles qui seront appliquées :")
-    print("  • filename = {meta-title-slug}-{position}.{ext}")
+    print("  • filename = {handle}-{position}.{ext} (unique sur toute la boutique)")
     print("  • alt text = meta title (ou titre si absent)")
     print("  • L'URL CDN va changer — les thèmes Liquid s'auto-mettent à jour")
     print("─" * 50)
+
+    if total_images == 0:
+        log("SEO Images — toutes les images sont déjà correctement nommées, rien à faire.", also_print=True)
+        print("\n[OK] Toutes les images portent déjà le bon nom SEO — aucune action nécessaire.")
+        return
 
     print("\n" + "=" * 60)
     answer = input("Lancer le renommage SEO des images ? (yes/no) : ").strip().lower()
