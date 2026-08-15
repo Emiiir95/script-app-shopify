@@ -274,6 +274,54 @@ def _load_openai_key():
     return ""
 
 
+def _mask_key(key):
+    """Masque une clé pour l'affichage : 'sk-...abcd' (jamais renvoyée en clair)."""
+    key = (key or "").strip()
+    if len(key) <= 8:
+        return "•" * len(key)
+    return f"{key[:3]}…{key[-4:]}"
+
+
+def get_openai_key_status():
+    """État de la clé OpenAI pour le backoffice (sans jamais renvoyer la clé en clair)."""
+    key = _load_openai_key()
+    return {"set": bool(key), "masked": _mask_key(key) if key else ""}
+
+
+def save_openai_key(key):
+    """
+    Écrit/met à jour OPENAI_API_KEY dans le .env racine, en préservant les autres
+    lignes. Permet à un non-dev de saisir sa clé depuis le navigateur, sans éditer
+    de fichier caché ni ouvrir de terminal.
+    """
+    key = (key or "").strip()
+    if not key:
+        raise ValueError("La clé OpenAI est vide.")
+    if not key.startswith("sk-"):
+        raise ValueError("Une clé OpenAI commence par « sk- ». Vérifie le copier-coller.")
+
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    lines, found = [], False
+    if os.path.isfile(env_path):
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("OPENAI_API_KEY") and "=" in line:
+                    lines.append(f"OPENAI_API_KEY={key}\n")
+                    found = True
+                else:
+                    lines.append(line if line.endswith("\n") else line + "\n")
+    if not found:
+        lines.append(f"OPENAI_API_KEY={key}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    try:
+        os.chmod(env_path, 0o600)   # lecture/écriture propriétaire uniquement
+    except OSError:
+        pass
+    return get_openai_key_status()
+
+
 def resolve_categories(folder, niches):
     """
     Bouton « Récupérer les catégories » : télécharge la taxonomie Shopify publique (FR),
@@ -544,6 +592,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/backups":
                 folder = (qs.get("store") or [""])[0]
                 self._send_json(list_store_backups(folder))
+            elif path == "/api/openai-key":
+                self._send_json(get_openai_key_status())
             elif path == "/api/generated":
                 folder = (qs.get("store") or [""])[0]
                 self._send_json(list_generated_features(folder))
@@ -590,6 +640,9 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/push-saved":
                 body = self._read_body()
                 self._send_json(push_saved_data(body.get("store"), body.get("features")))
+            elif path == "/api/openai-key":
+                body = self._read_body()
+                self._send_json(save_openai_key(body.get("key")))
             elif path == "/api/rollback-feature":
                 body = self._read_body()
                 self._send_json(rollback_feature(body.get("store"), body.get("feature")))

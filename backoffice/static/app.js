@@ -2971,5 +2971,80 @@ function escapeAttr(s) {
   );
 }
 
+/* ── Clé OpenAI (globale, partagée par toutes les boutiques) ── */
+async function refreshOpenAIKeyButton() {
+  const btn = document.getElementById("openaiKeyBtn");
+  if (!btn) return;
+  try {
+    const s = await api("GET", "/api/openai-key");
+    if (s.set) {
+      btn.textContent = `🔑 Clé OpenAI ✓`;
+      btn.title = `Clé enregistrée (${s.masked}). Clique pour la remplacer.`;
+      btn.classList.remove("warn-pulse");
+    } else {
+      btn.textContent = `🔑 Clé OpenAI ⚠️`;
+      btn.title = "Aucune clé OpenAI enregistrée — clique pour l'ajouter.";
+      btn.classList.add("warn-pulse");
+    }
+  } catch (e) {
+    /* silencieux : le bouton reste cliquable */
+  }
+}
+
+function openOpenAIKeyModal() {
+  const backdrop = document.createElement("div");
+  backdrop.className = "modal-backdrop";
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h2>🔑 Clé OpenAI</h2>
+      <p class="modal-sub">Elle sert à générer les textes (SEO, fiches, avis…). Elle est
+        <b>partagée par toutes tes boutiques</b> et reste <b>sur ton ordinateur</b>
+        (fichier <code>.env</code>, jamais envoyée sur Internet).</p>
+      <div class="field">
+        <label>Colle ta clé (commence par « sk- »)</label>
+        <input id="openaiKeyInput" type="password" placeholder="sk-..." autocomplete="off" spellcheck="false" />
+        <label style="font-weight:400;margin-top:6px;display:flex;gap:6px;align-items:center;cursor:pointer">
+          <input id="openaiKeyShow" type="checkbox" /> Afficher la clé
+        </label>
+      </div>
+      <p class="modal-sub" style="margin-top:0">Pas encore de clé ?
+        Crée-la sur <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a>.
+        💡 Pense à fixer une limite de dépense mensuelle sur ton compte OpenAI.</p>
+      <div class="modal-actions">
+        <button class="ghost" id="openaiKeyCancel">Annuler</button>
+        <button class="primary" id="openaiKeySave">Enregistrer</button>
+      </div>
+    </div>`;
+  document.body.appendChild(backdrop);
+
+  const input = backdrop.querySelector("#openaiKeyInput");
+  const show = backdrop.querySelector("#openaiKeyShow");
+  const close = () => backdrop.remove();
+  input.focus();
+  show.onchange = () => (input.type = show.checked ? "text" : "password");
+  backdrop.querySelector("#openaiKeyCancel").onclick = close;
+  backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+
+  backdrop.querySelector("#openaiKeySave").onclick = async () => {
+    const key = input.value.trim();
+    if (!key) { toast("Colle ta clé d'abord.", "err"); return; }
+    try {
+      await api("POST", "/api/openai-key", { key });
+      toast("Clé OpenAI enregistrée ✓", "ok");
+      close();
+      refreshOpenAIKeyButton();
+    } catch (e) {
+      toast(e.message || "Échec de l'enregistrement", "err");
+    }
+  };
+}
+
+function initOpenAIKey() {
+  const btn = document.getElementById("openaiKeyBtn");
+  if (btn) btn.onclick = openOpenAIKeyModal;
+  refreshOpenAIKeyButton();
+}
+
 /* ── Boot ── */
 loadStores().catch((e) => toast("Erreur : " + e.message, "err"));
+initOpenAIKey();

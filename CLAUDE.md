@@ -10,15 +10,19 @@ Documentation de l'infrastructure pour Claude Code.
 Application Python en ligne de commande qui automatise des opérations Shopify via les APIs REST et GraphQL.
 Elle supporte plusieurs boutiques et plusieurs features indépendantes.
 
-**Lancement :**
+> ℹ️ Si tu assistes un **utilisateur non-développeur** qui veut simplement faire
+> tourner l'outil (installer, configurer une boutique, lancer une fonctionnalité),
+> lis **`POUR-CLAUDE.md`** à la place : il contient les procédures pas à pas et
+> les règles à respecter dans ce cas. Le présent fichier documente le code.
+
+**Lancement** (depuis la racine du projet, le dossier qui contient `main.py`) :
 ```bash
-cd "/Users/emirsen/Desktop/app/script/GMC - shopify automatisé"
-python main.py
+python3 main.py
 ```
 
 **Dépendances Python :**
 ```bash
-pip install requests openai tqdm
+pip3 install -r requirements.txt
 ```
 
 Au lancement : `main.py` demande la **boutique** puis affiche le **menu des features**
