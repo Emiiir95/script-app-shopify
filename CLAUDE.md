@@ -81,8 +81,10 @@ script/
 │   │   ├── runner.py  exporter.py  importer.py   (pas de generator/prompts — pas d'OpenAI)
 │   ├── menus/                      ← 10. Menus de navigation (depuis config)
 │   │   ├── runner.py  injector.py
-│   └── rebrand/                    ← 11. Remplacement URL/nom de marque (descriptions + SEO)
-│       ├── runner.py  injector.py
+│   ├── rebrand/                    ← 11. Remplacement URL/nom de marque (descriptions + SEO)
+│   │   ├── runner.py  injector.py
+│   └── balises/                    ← 12. Range les produits dans les collections via tags (IA)
+│       ├── runner.py  generator.py  injector.py  prompts.py
 │
 ├── utils/                          ← Utilitaires partagés entre toutes les features
 │   ├── __init__.py
@@ -156,6 +158,7 @@ affiche un message et ne fait rien — elle ne crashe pas.
 | 9 | Transfert | — (choix interactif) | non | Avoir ≥ 2 boutiques dans `stores/`. La **destination** doit être vide ou acceptée en doublon. |
 | 10 | Menus | `menus` | non | Collections/pages/politiques référencées doivent **exister** (créées avant). Scope navigation requis. |
 | 11 | Rebrand | `rebrand` | non | Rien. À lancer typiquement **après un Transfert** pour changer marque/URL. |
+| 12 | Balises | `balises` | oui | **Collections déjà créées** (feature 7) + fiches produits finies. Tout est lu **en direct depuis Shopify**. |
 
 **Ordre recommandé sur une boutique neuve :**
 `0 Setup` → importer les produits (avec descriptions fournisseur) → `4 Normalisation` →
@@ -362,6 +365,46 @@ l'ancien nom de marque / ancienne URL dans tout le catalogue.
 ```
 Remplacement **littéral** (pas de regex), sensible à la casse, applique toutes les règles dans
 l'ordre. Sûr à relancer (idempotent une fois les termes remplacés).
+
+---
+
+## Feature Balises (12) — rangement auto des produits dans les collections
+
+Classe automatiquement chaque produit dans les **bonnes collections** via le champ **`tags`**.
+Repose sur le fait que les collections du projet sont des **smart collections `tag equals X`**
+(voir `collections/injector.py`) : écrire le tag d'une collection sur un produit → Shopify l'y
+range tout seul. **Feature IA** (`gpt-4o-mini`), clé config `balises`.
+
+**⚠️ Tout est lu EN DIRECT depuis Shopify** (produits ET collections avec leurs règles de tag) —
+**jamais** la config locale, qui peut être périmée (`fetch_collections_with_rules` +
+`fetch_products_live` dans `balises/injector.py`).
+
+**Flow (`generator.py` → `injector.py`) :**
+1. `fetch_collections_with_rules` : toutes les smart collections + leurs conditions de tag
+   (les collections sans règle de tag sont **ignorées**, intaggables).
+2. `fetch_products_live` : tous les produits (titre, description, type, tags actuels) ; +
+   metafield `custom.caracteristique` par produit (best-effort) pour enrichir le classement.
+3. `classify_product` (IA) : lit le contenu produit + la liste des collections réelles → renvoie
+   les **handles** des collections où le produit doit être (validés ⊆ liste réelle ; plafond
+   `max_collections`, `0` = aucun).
+4. `compute_synced_tags` (**mode remise à plat / reset total**, cœur testé) : **efface TOUS**
+   les tags du produit et remet **uniquement** les tags des collections choisies. À la fin, le
+   produit n'a QUE ce que le classement a décidé — les tags SEO/promo/manuels sont **aussi
+   supprimés** (choix assumé « il ne doit y avoir que ce que le bot a fait »). Idempotent : si la
+   liste finale = la liste actuelle → aucun PUT.
+   ⚠️ **Sécurité anti-effacement** : si l'IA **échoue** sur un produit (réseau/parse), `classify_product`
+   renvoie `None` (≠ liste vide) et le runner **saute** le produit sans toucher ses tags — sinon
+   une panne IA effacerait tous les tags.
+5. Aperçu + confirmation → `update_product_tags` (PUT `tags`) → snapshot `backup` (retour arrière
+   des tags), verrou `StoreLock`, reprise `checkpoint`, rapport CSV.
+
+**Structure `config.json` :**
+```json
+"balises": { "max_collections": 0 }
+```
+`max_collections` : plafond de collections par produit (`0` = aucun plafond). UI backoffice =
+`select`. Idempotent : relancer quand rien ne change ne fait aucun PUT. Coût ≈ **0,10–0,20 $ /100
+produits** (gpt-4o-mini, 1 appel/produit). À lancer **après Collections (7)** et fiches produits.
 
 ---
 
@@ -757,6 +800,10 @@ tests/                                   (~360 tests, tous mockés — aucun app
 ├── test_menus.py              ← features/menus/injector.py      (20)
 ├── test_transfert_exporter.py ← features/transfert/exporter.py (14)
 ├── test_transfert_importer.py ← features/transfert/importer.py (22)
+├── test_balises_injector.py   ← features/balises/injector.py    (14)
+├── test_balises_generator.py  ← features/balises/generator.py    (8)
+├── test_balises_prompts.py    ← features/balises/prompts.py      (4)
+├── test_balises_runner.py     ← features/balises (intégration e2e) (3)
 └── test_utils.py              ← utils/ (logger, cost_tracker, checkpoint) (38)
 ```
 

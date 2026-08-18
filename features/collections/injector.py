@@ -22,6 +22,23 @@ from shopify.client import shopify_get, shopify_post, shopify_put
 from utils.logger import log
 
 
+def filter_collections_to_generate(collections):
+    """
+    Ne garde que les collections à (re)générer, selon la case « Générer » du backoffice.
+
+    Une collection est générée si son champ `generate` vaut True OU est absent
+    (rétrocompatible : les anciennes configs sans ce champ génèrent tout comme avant).
+    `generate: false` = collection déjà faite qu'on ne veut PAS retraiter.
+
+    Args:
+        collections : liste de dicts collection (config)
+
+    Returns:
+        list : sous-ensemble à générer (ordre préservé)
+    """
+    return [c for c in (collections or []) if c.get("generate", True)]
+
+
 def fetch_existing_collections(base_url, headers):
     """
     Récupère toutes les smart collections existantes (paginées).

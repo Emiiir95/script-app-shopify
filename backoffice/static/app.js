@@ -544,7 +544,7 @@ const FEATURES = [
       },
     ],
     prereq:
-      "Ces collections sont les <b>mêmes que dans SEO Boost</b> : les modifier ici les modifie aussi là-bas. Le mot-clé de niche et le nom de domaine se règlent dans « Mes données ».",
+      "Ces collections sont les <b>mêmes que dans SEO Boost</b> : les modifier ici les modifie aussi là-bas. Le mot-clé de niche et le nom de domaine se règlent dans « Mes données ». 💡 Au moment où tu cliques <b>« Lancer »</b>, une fenêtre te laisse <b>cocher quelles collections générer</b> (tout est décoché par défaut) — pratique pour ne (re)générer que les nouvelles.",
     fields: [
       {
         path: "seo_boost.collections",
@@ -673,6 +673,34 @@ const FEATURES = [
         label: "Tes remplacements",
         type: "pairs",
         help: "Un « remplacement » = un mot à chercher (à gauche) et le mot qui le remplace (à droite). L'appli parcourt toutes tes fiches produits et échange l'un par l'autre. Exemple : chercher « le-perchoir-du-chat.com » et le remplacer par « perchoirduchat.com ». Ajoute autant de lignes que nécessaire.",
+      },
+    ],
+  },
+
+  {
+    id: "balises",
+    num: "12",
+    label: "Balises",
+    ico: "🗂️",
+    section: "Features",
+    desc: "Range automatiquement tes produits dans les bonnes collections. L'IA lit chaque fiche produit et décide dans quelles collections il doit apparaître, puis met les bons tags.",
+    prereq:
+      "Tes <b>collections doivent déjà exister</b> (lance Collections avant) et tes fiches produits être finies. <b>Tout est relu en direct depuis Shopify</b> (produits ET collections) — pas besoin d'avoir « enregistré » ta config avant. ⚠ <b>Remise à plat totale</b> : pour chaque produit, TOUS les tags actuels sont <b>remplacés</b> par ceux des collections choisies par l'IA — les autres tags (SEO, promo, manuels…) sont <b>supprimés</b>. Une sauvegarde des tags est faite avant (retour arrière possible).",
+    fields: [
+      {
+        path: "balises.max_collections",
+        label: "Nombre max de collections par produit",
+        type: "select",
+        options: [
+          ["0", "Aucun plafond (toutes celles qui correspondent)"],
+          ["1", "1 maximum"],
+          ["2", "2 maximum"],
+          ["3", "3 maximum"],
+          ["4", "4 maximum"],
+          ["5", "5 maximum"],
+          ["6", "6 maximum"],
+        ],
+        help: "Combien de collections l'IA peut attribuer au maximum à un même produit. « Aucun plafond » = elle en met autant que nécessaire.",
       },
     ],
   },
@@ -1247,9 +1275,11 @@ function collectionRow(obj) {
   const volume = h("input", { type: "number", placeholder: "ex : 4400" });
   volume.value = obj.volume ?? "";
 
-  // Type et mots déclencheurs : optionnels et masqués dans l'interface — on préserve les valeurs existantes.
+  // Type, mots déclencheurs et `generate` : gérés ailleurs (la sélection « générer »
+  // se fait dans la fenêtre au lancement) — on préserve juste les valeurs existantes.
   const keepCategory = obj.category;
   const keepTags = Array.isArray(obj.tags) ? obj.tags : undefined;
+  const keepGenerate = obj.generate;
 
   const handleField = h(
     "div",
@@ -1285,6 +1315,7 @@ function collectionRow(obj) {
     if (volume.value !== "") o.volume = Number(volume.value);
     if (keepCategory) o.category = keepCategory; // préservé même si non affiché
     if (keepTags && keepTags.length) o.tags = keepTags; // préservé même si non affiché
+    if (keepGenerate !== undefined) o.generate = keepGenerate; // piloté au lancement
     return o;
   };
 
@@ -2944,6 +2975,15 @@ async function saveFeature(feature, readers, fileEditors) {
 
 /* ── Lancer le CLI ── */
 async function runCli(feature) {
+  // La feature Collections passe d'abord par une fenêtre de sélection (quelles
+  // collections générer). Les autres features se lancent directement.
+  if (feature && feature.id === "collections") {
+    return openCollectionsPickerThenRun(feature);
+  }
+  return launchFeature(feature);
+}
+
+async function launchFeature(feature) {
   try {
     // Lance directement la feature sur la boutique en cours (sans menu dans le terminal)
     const body = feature ? { store: STORE, feature: feature.id } : {};
@@ -2955,6 +2995,92 @@ async function runCli(feature) {
   } catch (e) {
     toast(e.message, "err");
   }
+}
+
+/* Fenêtre de sélection des collections à générer (tout décoché par défaut) +
+   boutons tout cocher / tout décocher. On écrit le champ `generate` sur chaque
+   collection, on enregistre, puis on lance le terminal. */
+function openCollectionsPickerThenRun(feature) {
+  const cols = (getPath(CFG, "seo_boost.collections") || []).filter(
+    (c) => c && (c.name || c.url),
+  );
+  if (!cols.length) {
+    toast("Aucune collection définie à générer.", "err");
+    return;
+  }
+
+  const backdrop = h("div", { class: "modal-backdrop" });
+  const rows = cols.map((c, i) => {
+    const cb = h("input", { type: "checkbox" }); // décoché par défaut
+    let handle = "";
+    if (c.url && c.url.includes("/collections/"))
+      handle = c.url.split("/collections/")[1].replace(/\/+$/, "");
+    const label = h(
+      "label",
+      { class: "pick-row" },
+      cb,
+      h("span", {}, c.name || handle || `Collection ${i + 1}`),
+      handle ? h("span", { class: "pick-handle" }, handle) : "",
+    );
+    return { cb, node: label };
+  });
+
+  const list = h(
+    "div",
+    { class: "pick-list" },
+    rows.map((r) => r.node),
+  );
+  const setAll = (v) => rows.forEach((r) => (r.cb.checked = v));
+
+  const modal = h("div", { class: "modal" });
+  modal.append(
+    h("h2", {}, "🗂️ Quelles collections générer ?"),
+    h(
+      "p",
+      { class: "modal-sub" },
+      "Coche uniquement les collections à (re)générer. Tout est décoché par défaut — pratique pour ne traiter que les nouvelles. Les autres ne seront pas touchées.",
+    ),
+    h(
+      "div",
+      { class: "pick-actions" },
+      h("button", { class: "small ghost", onClick: () => setAll(true) }, "Tout cocher"),
+      h("button", { class: "small ghost", onClick: () => setAll(false) }, "Tout décocher"),
+    ),
+    list,
+    h(
+      "div",
+      { class: "modal-actions" },
+      h("button", { class: "ghost", id: "pickCancel" }, "Annuler"),
+      h("button", { class: "primary", id: "pickRun" }, "Lancer sur la sélection"),
+    ),
+  );
+  backdrop.append(modal);
+  document.body.appendChild(backdrop);
+
+  const close = () => backdrop.remove();
+  backdrop.onclick = (e) => {
+    if (e.target === backdrop) close();
+  };
+  modal.querySelector("#pickCancel").onclick = close;
+  modal.querySelector("#pickRun").onclick = async () => {
+    const chosen = rows.filter((r) => r.cb.checked).length;
+    if (!chosen) {
+      toast("Coche au moins une collection.", "err");
+      return;
+    }
+    // Écrit le champ `generate` sur chaque collection puis enregistre la config.
+    cols.forEach((c, i) => (c.generate = rows[i].cb.checked));
+    try {
+      await api("POST", "/api/store?folder=" + encodeURIComponent(STORE), {
+        config: CFG,
+      });
+    } catch (e) {
+      toast("Enregistrement impossible : " + e.message, "err");
+      return;
+    }
+    close();
+    await launchFeature(feature);
+  };
 }
 
 /* ── Échappement ── */

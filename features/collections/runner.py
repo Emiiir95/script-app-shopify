@@ -28,6 +28,7 @@ from features.collections.generator import (
 )
 from features.collections.injector import (
     fetch_existing_collections,
+    filter_collections_to_generate,
     get_handle_from_url,
     find_collection_by_handle,
     create_collection,
@@ -57,13 +58,25 @@ def run(store_config, store_path):
 
     # ── Config collections ─────────────────────────────────────────────────────
     seo_config = store_config.get("seo_boost", {})
-    collections_config = seo_config.get("collections", [])
+    all_config         = seo_config.get("collections", [])
     niche_keyword      = seo_config.get("niche_keyword", "")
 
-    if not collections_config:
+    if not all_config:
         print("\n[ERREUR] Aucune collection trouvée dans config.json > seo_boost > collections")
         log("Collections — aucune collection dans config.json", "error", also_print=True)
         return
+
+    # On ne (re)génère QUE les collections cochées « Générer » dans le backoffice
+    # (celles décochées, généralement déjà faites, sont laissées telles quelles).
+    collections_config = filter_collections_to_generate(all_config)
+    skipped_count = len(all_config) - len(collections_config)
+    if not collections_config:
+        print(f"\n[INFO] Les {len(all_config)} collection(s) sont décochées (« Générer » désactivé) — rien à faire.")
+        log("Collections — toutes décochées, rien à générer.", also_print=True)
+        return
+    if skipped_count:
+        print(f"[INFO] {skipped_count} collection(s) décochée(s) seront ignorées ; "
+              f"{len(collections_config)} à générer.")
 
     if not niche_keyword:
         print("\n[ERREUR] niche_keyword manquant dans config.json > seo_boost")

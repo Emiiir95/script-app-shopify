@@ -212,6 +212,7 @@ Pour l'arrêter, il suffit de te le demander.
 | 9 | Transfert | Copie produits + metaobjects vers une autre boutique |
 | 10 | Menus | Crée / met à jour les menus de navigation |
 | 11 | Rebrand | Remplace URL / nom de marque dans les textes et le SEO |
+| 12 | Balises | Range les produits dans les bonnes collections (IA, via tags) — à faire après Collections |
 
 ### Marche à suivre
 

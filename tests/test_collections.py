@@ -28,6 +28,7 @@ from features.collections.injector import (
     get_handle_from_url,
     find_collection_by_handle,
     fetch_existing_collections,
+    filter_collections_to_generate,
     build_tag_rules,
     create_collection,
     update_collection,
@@ -35,6 +36,29 @@ from features.collections.injector import (
     _http_error_detail,
     _is_handle_taken,
 )
+
+
+class TestFilterCollectionsToGenerate(unittest.TestCase):
+    def test_keeps_checked_and_missing_flag(self):
+        cols = [
+            {"name": "A", "generate": True},
+            {"name": "B", "generate": False},
+            {"name": "C"},  # champ absent → généré (rétrocompatible)
+        ]
+        out = filter_collections_to_generate(cols)
+        self.assertEqual([c["name"] for c in out], ["A", "C"])
+
+    def test_all_unchecked_returns_empty(self):
+        cols = [{"name": "A", "generate": False}, {"name": "B", "generate": False}]
+        self.assertEqual(filter_collections_to_generate(cols), [])
+
+    def test_empty_input(self):
+        self.assertEqual(filter_collections_to_generate([]), [])
+        self.assertEqual(filter_collections_to_generate(None), [])
+
+    def test_preserves_order(self):
+        cols = [{"name": "X"}, {"name": "Y", "generate": True}, {"name": "Z"}]
+        self.assertEqual([c["name"] for c in filter_collections_to_generate(cols)], ["X", "Y", "Z"])
 
 
 # ── load_keywords_for_collection ──────────────────────────────────────────────

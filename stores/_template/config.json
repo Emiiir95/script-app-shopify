@@ -54,6 +54,12 @@
     "product_category_search": null
   },
 
+  "balises": {
+    "_NOTE": "Feature Balises — range les produits dans les collections via leurs tags (IA). Tout est lu en direct depuis Shopify. Mode synchronisation (ajoute ET retire pour un classement propre).",
+    "_MAX_NOTE": "Plafond de collections par produit : 0 = aucun plafond (toutes celles qui correspondent).",
+    "max_collections": 0
+  },
+
   "menus": [
     {
       "_NOTE": "Menu de pied de page — liens légaux. Lancer Politiques (8) AVANT pour que les politiques existent.",

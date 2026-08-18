@@ -41,6 +41,7 @@ FEATURES = {
     "9": ("Transfert      — Copier produits + metaobjects vers autre boutique",       "features.transfert.runner"),
    "10": ("Menus          — Création/mise à jour menus de navigation (depuis config)", "features.menus.runner"),
    "11": ("Rebrand        — Remplacement URL/nom de marque dans descriptions et SEO",  "features.rebrand.runner"),
+   "12": ("Balises        — Range les produits dans les bonnes collections (tags, IA)", "features.balises.runner"),
 }
 
 
